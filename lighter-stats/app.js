@@ -151,6 +151,17 @@ const COMMON_CARDS = [
       row('Shortest / longest', `${durFmt(Math.min(...D))} / ${durFmt(Math.max(...D))}`) + row('Winners: average', `<span class="pos">${avg(W)}</span>`, 'Closed positions with a positive result (realized PnL − fees).') + row('Losers: average', `<span class="neg">${avg(L)}</span>`) +
       row('Long / short: average', `${avg(lg)} / ${avg(sh)}`) + `</div><p class="note">Counts positions opened and closed within the loaded fills${S.trunc ? '; the history is incomplete, so long positions are missing' : ''}. Positions still open are not included.</p>`;
   } },
+  { id: 'streaks', title: 'Win / loss streaks', sub: fsub, w: 4, render(S) {
+    if (MODE === 'spot') return '<div class="empty">Streaks are for perpetual positions: pick Perps or All</div>';
+    if (!S.vf.length) return S.fillsDone ? '<div class="empty">No fills</div>' : '<div class="empty">Loading fills…</div>';
+    const T = holdTrips(S.vf).sort((a, b) => a.t1 - b.t1); if (!T.length) return '<div class="empty">No position was both opened and closed within the loaded fills. Pick a larger fills depth to look further back.</div>';
+    let cw = 0, cl = 0, bw = 0, bl = 0, wins = 0;
+    for (const t of T) { if (t.pnl > 0) { wins++; cw++; cl = 0; bw = Math.max(bw, cw); } else { cl++; cw = 0; bl = Math.max(bl, cl); } }
+    const now = cw ? `<span class="pos">${cw} win${cw > 1 ? 's' : ''}</span>` : `<span class="neg">${cl} loss${cl > 1 ? 'es' : ''}</span>`;
+    return `<div class="rows">` + row('Closed positions', `${fmt(T.length, 0)} <small class="muted">(${fmt(wins, 0)} won · ${fmt(T.length - wins, 0)} lost)</small>`, 'A position counts from the first fill that opens it in a market until the market is flat again (or flips). Won = realized PnL − fees above zero.') +
+      row('Current streak', now, 'Positions in a row with the same result, counted back from the latest closed position.') + row('Best win streak', `<span class="pos">${bw}</span>`) + row('Worst loss streak', `<span class="neg">${bl}</span>`) + `</div>` +
+      `<p class="note">Counts positions opened and closed within the loaded fills${S.trunc ? '; the history is incomplete, so long positions are missing' : ''}. Not to be confused with the leaderboard's active-day streak.</p>`;
+  } },
   { id: 'curve', title: 'Realized PnL curve', sub: S => 'realized PnL − fees · ' + fsub(S), w: 8, render() { return '<div class="chartbox" data-ch="curve"></div>'; },
     after(el, S) { const b = $('[data-ch=curve]', el); if (S.fs.curve.length < 2) { b.innerHTML = '<div class="empty">Need more fills</div>'; return; }
       lineChart(b, S.fs.curve, { color: css('--s1'), zero: true, minRange: 0.5, axis: v => smoney(v, Math.abs(v) < 10 ? 2 : 0), tip: v => smoney(v, 2), xfmt: tshort }); } },
@@ -453,7 +464,7 @@ const CARDS = [
     let g = 1; const pts = p.ret.map(r => [r.timestamp * 1000, (g *= 1 + n(r.daily_return)) - 1]); lineChart(box, pts, { color: css('--s3'), zero: true, minRange: .05, axis: v => sgn(v * 100, 0) + '%', tip: v => sgn(v * 100, 2) + '%', xfmt: dshort }); } },
 ].concat(COMMON_CARDS);
 const DEFAULT_CARDS = CARDS.map(c => c.id);
-const ORDER = ['accounts', 'summary', 'volume', 'pnl', 'equity', 'pnlchart', 'risk', 'positions', 'activity', 'hold', 'curve', 'points', 'daily', 'hourly', 'bymarket', 'netdep', 'assets', 'pools', 'fills', 'liqs', 'markets', 'feetier', 'poolperf'];
+const ORDER = ['accounts', 'summary', 'volume', 'pnl', 'equity', 'pnlchart', 'risk', 'positions', 'activity', 'hold', 'streaks', 'curve', 'points', 'daily', 'hourly', 'bymarket', 'netdep', 'assets', 'pools', 'fills', 'liqs', 'markets', 'feetier', 'poolperf'];
 
 /* ---------------------------------------------------------------- render + page wiring */
 function status(html, err) { const s = $('#status'), busy = /^Loading/.test(html); s.className = 'status' + (err ? ' err' : '') + (busy ? ' busy' : ''); s.innerHTML = (busy ? '<i class="spin"></i>' : '') + html; }
