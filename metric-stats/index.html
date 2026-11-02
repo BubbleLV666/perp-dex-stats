@@ -11,10 +11,15 @@
 <link rel="stylesheet" href="style.css?v=1">
 <link rel="stylesheet" href="theme.css?v=1">
 <link rel="stylesheet" href="extra.css?v=1">
+<style>
+.back{font-size:12px;font-weight:600;padding:5px 11px;border-radius:99px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2,inherit);text-decoration:none;white-space:nowrap}
+.back:hover{border-color:var(--accent-line,var(--s1));color:var(--ink)}
+</style>
 </head>
 <body>
 <div class="wrap">
   <header class="top">
+    <a class="back" href="../index.html" title="All DEXes">← All DEXes</a>
     <a class="brand" href="./" title="Metric Trade Stats"><img class="mlogo" src="metric-logo.svg" alt="" width="30" height="30"><h1>Metric</h1><h1 class="thin">Trade Stats</h1><span class="badge">unofficial</span></a>
     <span id="plat" class="plat" tabindex="0" hidden>Platform volume 24h <b id="platVol24" class="num">—</b><span class="platsep"></span>7d <b id="platVol7" class="num">—</b><span class="plattip" id="platTip"></span></span>
     <span class="sp"></span>

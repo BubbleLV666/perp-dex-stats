@@ -10,11 +10,16 @@
 <script src="theme.js"></script>
 <link rel="stylesheet" href="style.css?v=1793262522">
 <link rel="stylesheet" href="theme.css?v=1793263110">
+<style>
+.back{font-size:12px;font-weight:600;padding:5px 11px;border-radius:99px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2,inherit);text-decoration:none;white-space:nowrap}
+.back:hover{border-color:var(--accent-line,var(--s1));color:var(--ink)}
+</style>
 </head>
 <body>
 <div class="wrap">
   <header class="top">
-    <a class="brand" href="../index.html" title="Back to the main page"><img class="blogo" src="bulk-logo-t.png" alt="BULK" width="62" height="28"><h1>Trade Stats</h1><span class="badge">unofficial</span></a>
+    <a class="back" href="../index.html" title="All DEXes">← All DEXes</a>
+    <a class="brand" href="index.html" title="Start page"><img class="blogo" src="bulk-logo-t.png" alt="BULK" width="62" height="28"><h1>Trade Stats</h1><span class="badge">unofficial</span></a>
     <span id="plat" class="plat" hidden>Platform 24h volume <b id="platVol" class="num">—</b> <i>·</i> OI <b id="platOi" class="num">—</b></span>
     <span class="sp"></span>
     <button id="btnShare" class="btn primary" title="Create a stats image (PNG) to share, e.g. in Discord">🖼 Create stats image</button>
