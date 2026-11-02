@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pacifica Trade Stats</title>
+<meta name="description" content="Unofficial trading statistics for Pacifica: PnL, volume, fees, positions, funding, maker/taker. Enter a Solana wallet address.">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<meta property="og:title" content="Pacifica Trade Stats (unofficial)">
+<meta property="og:description" content="Enter a Solana wallet address to see PnL, volume, fees, positions and fill analysis.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#111110">
+<script src="theme.js"></script>
+<link rel="stylesheet" href="style.css?v=1793262897">
+<link rel="stylesheet" href="theme.css?v=1793263110">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="../index.html" title="Back to the main page"><span class="logo"><img src="icon.svg" alt="" width="26" height="26"></span><h1>Pacifica Trade Stats</h1><span class="badge">unofficial</span></a>
+    <div class="plat" id="plat" title="Loading platform stats…">Platform 24h volume <b class="num" id="platV">…</b><span class="platsep">·</span>OI <b class="num" id="platOI">…</b></div>
+    <span class="sp"></span>
+    <button id="btnCards" class="btn" aria-expanded="false">Cards ⚙</button>
+    <button id="btnTheme" class="btn" title="Theme">◐</button>
+  </header>
+
+  <div id="viewStats">
+  <form id="form" class="search" autocomplete="off">
+    <input id="addr" type="text" spellcheck="false" placeholder="Solana wallet address…" aria-label="Wallet" autocomplete="off">
+    <select id="depth" aria-label="Fills to analyze" title="How many of the most recent fills to analyze."><option value="1000">Fills: last 1,000</option><option value="3000">Fills: last 3,000</option><option value="10000" selected>Fills: last 10,000</option></select>
+    <button class="btn primary" type="submit">Show</button>
+    <label class="chk autoref" title="Reload the data every 60 seconds"><input type="checkbox" id="auto"> auto-refresh 60 s</label>
+  </form>
+  <div id="recent" class="recent"></div>
+  <div class="periodbar" id="periodbar" aria-label="Period"></div>
+  <div class="pnote" id="pnote"></div>
+  <div class="custom" id="custom" hidden>
+    <label>from (GMT) <input type="text" id="pf" placeholder="YYYY-MM-DD HH:MM" maxlength="16" autocomplete="off" spellcheck="false"></label>
+    <label>to (GMT) <input type="text" id="pt" placeholder="YYYY-MM-DD HH:MM" maxlength="16" autocomplete="off" spellcheck="false"></label>
+    <button class="btn small primary" id="pgo" type="button">Apply</button>
+  </div>
+  <div id="status" class="status" role="status"></div>
+
+  <div id="cardsPanel" class="panel" hidden>
+    <div class="panel-h"><b>Cards to show</b>
+      <button class="btn small" id="cardsAll">all</button><button class="btn small" id="cardsNone">none</button><button class="btn small" id="cardsReset">default</button></div>
+    <div id="cardsList" class="cardslist"></div>
+  </div>
+
+  <main id="out" class="out"></main>
+
+  <section id="welcome" class="welcome">
+    <h2>Trading stats for any wallet on Pacifica</h2>
+    <p>Paste a Solana wallet address — the site queries the public Pacifica API directly and shows the account equity and balance, PnL, volume, fees, open positions with liquidation prices, funding, deposits and withdrawals, orders, vaults and a fill analysis. No key and no sign-in are needed; the API gives 100 credits per minute to an IP, so a long history loads in steps and the page says when it waits.</p>
+  </section>
+  </div>
+
+  <footer>
+    Unofficial project, not affiliated with Pacifica. Data comes from the public API <code>GET https://api.pacifica.fi/api/v1</code>; it may lag or contain exchange errors.
+    <span id="ver"></span>
+  </footer>
+</div>
+<script src="app.js?v=1793262897"></script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+/* Home page. Tokens, fonts and shared components come from theme.css. */
+*{box-sizing:border-box}
+html{font-size:14px}
+html,body{margin:0}
+body{font-family:var(--ff);font-size:1rem;line-height:1.5}
+.num{font-variant-numeric:tabular-nums}
+
+/* top bar */
+.topbar{position:sticky;top:0;z-index:30;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 80%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.topin{max-width:76rem;margin:0 auto;padding:.65rem 1.4rem;display:flex;align-items:center;gap:.8rem}
+.topin .sp{flex:1}
+.brand{display:flex;align-items:center;gap:.7rem;color:var(--ink);text-decoration:none}
+.brand .mark{width:1.6rem;height:1.6rem;display:block}
+.bname{font-size:.98rem;font-weight:650;letter-spacing:-.015em}
+
+/* hero */
+.wrap{max-width:76rem;margin:0 auto;padding:0 1.4rem 2.5rem}
+.hero{text-align:center;padding:3.6rem 0 1rem}
+.hero h1{margin:0;font-size:clamp(1.7rem,2.5vw,2.3rem);font-weight:700;letter-spacing:-.04em;line-height:1.14;color:var(--ink)}
+.hero .accent{color:var(--s1);background:linear-gradient(180deg,color-mix(in srgb,var(--s1) 72%,#fff),var(--s1));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hero .sub{margin:.7rem auto 1.6rem;max-width:36rem;color:var(--ink-3);font-size:.98rem}
+.search{display:flex;gap:.6rem;max-width:40rem;margin:0 auto}
+.search input{flex:1;min-width:0;font-size:.86rem;padding:.8rem 1rem;border-radius:12px;box-shadow:var(--shadow)}
+.search .btn{display:inline-flex;align-items:center;gap:.5rem;padding:0 1.4rem;font-size:.9rem;font-weight:620;border-radius:12px}
+.btn:disabled{opacity:.6;cursor:default}
+
+/* DEX buttons */
+.logos{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:.6rem;max-width:54rem;margin:1.4rem auto 0}
+.lg{display:flex;align-items:center;justify-content:center;gap:.65rem;height:3.2rem;padding:0 .6rem;background:linear-gradient(180deg,var(--surface-2),var(--surface));border:1px solid var(--line);border-radius:12px;color:var(--ink);font-weight:620;font-size:.8rem;text-decoration:none;box-shadow:var(--shadow);transition:border-color .15s,box-shadow .15s,transform .15s}
+.lg:hover{border-color:var(--accent-line);box-shadow:0 0 0 4px var(--accent-soft),var(--shadow);transform:translateY(-2px)}
+.lg:active{transform:translateY(0)}
+.lg:focus-visible{outline:2px solid var(--s1);outline-offset:2px}
+.lg img{height:1.25rem;width:auto;max-width:5.4rem;object-fit:contain;flex:none}
+.lg img.ico{height:1.45rem;width:1.45rem}
+.lg span{line-height:1.15;text-align:left}
+
+/* results */
+.status{min-height:1.5rem;margin:1.1rem auto 0;color:var(--ink-2);font-size:.92rem;text-align:center}
+.status.err{color:var(--bad);font-weight:550}
+.results{margin-top:1.4rem}
+.sec{margin:0 0 .75rem;font-size:.95rem;font-weight:640;letter-spacing:-.01em}
+.dexlist{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(14rem,1fr));gap:.8rem}
+.dexcard{display:block;padding:.95rem 1.05rem 1rem;background:linear-gradient(180deg,color-mix(in srgb,var(--surface) 100%,#fff 2%),var(--surface));border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);color:inherit;text-decoration:none;transition:border-color .15s,transform .15s,box-shadow .15s;animation:rise .35s var(--ease) both}
+a.dexcard:hover{border-color:var(--accent-line);transform:translateY(-2px);box-shadow:0 0 0 4px var(--accent-soft),var(--shadow)}
+.dexcard.dim{background:transparent;box-shadow:none;color:var(--ink-3)}
+.rc-top{display:flex;align-items:center;gap:.7rem}
+.rc-top img{width:1.6rem;height:1.6rem;object-fit:contain;flex:none}
+.rc-top .name{font-weight:620;font-size:.92rem;margin-right:auto}
+.rc-top .go{color:var(--ink-3);font-size:1.2rem;line-height:1}
+.rc-label{margin-top:.9rem;color:var(--ink-3);font-size:.74rem}
+.rc-bal{margin-top:.1rem;font-size:1.45rem;font-weight:680;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.rc-err{margin-top:1.05rem;color:var(--ink-3);font-size:.9rem}
+.rc-err a{margin-left:.5rem;font-size:.82rem}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.spin{display:inline-block;width:.85rem;height:.85rem;border:2px solid var(--line-2);border-top-color:var(--s1);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:.6rem}
+@keyframes sp{to{transform:rotate(360deg)}}
+.foot{margin-top:3rem;padding-top:1.1rem;border-top:1px solid var(--line);color:var(--ink-3);font-size:.78rem;text-align:center}
+
+/* wide screens: the whole page scales with the base font */
+@media (min-width:2200px){html{font-size:15px}}
+@media (max-width:1000px){.logos{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:600px){.hero{padding-top:2.4rem}.search{flex-wrap:wrap}.search .btn{height:3rem;flex:1}.logos{grid-template-columns:repeat(2,minmax(0,1fr))}.plat{display:none}.dexlist{grid-template-columns:1fr}.topin,.wrap{padding-left:1rem;padding-right:1rem}}
+
+/* the Entropy logo is dark: invert it on the dark theme */
+:root[data-theme="dark"] img[src$="entropy.png"]{filter:invert(1) brightness(1.15)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) img[src$="entropy.png"]{filter:invert(1) brightness(1.15)}}

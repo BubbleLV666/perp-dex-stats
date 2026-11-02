@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lighter Robinhood Trade Stats</title>
+<meta name="description" content="Unofficial trading statistics for Lighter Robinhood: PnL, volume, fees, positions, maker/taker. Enter an Ethereum address (0x…) or a Lighter Robinhood account index.">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta property="og:title" content="Lighter Robinhood Trade Stats (unofficial)">
+<meta property="og:description" content="Enter an Ethereum address (0x…) or a Lighter Robinhood account index to see PnL, volume, fees, positions and fill analysis.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#111110">
+<script src="theme.js"></script>
+<link rel="stylesheet" href="style.css?v=1793263276">
+<link rel="stylesheet" href="theme.css?v=1793263276">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="../index.html" title="Back to the main page"><span class="logo"><img src="lighter-robinhood-logo.svg" alt="" height="24"></span><h1>Trade Stats</h1><span class="badge">unofficial</span></a>
+    <div class="plat" id="plat" title="Loading platform stats…">Platform 24h volume <b class="num" id="platV">…</b><span class="platsep">·</span>OI <b class="num" id="platOI">…</b></div>
+    <span class="sp"></span>
+    <button id="btnCards" class="btn" aria-expanded="false">Cards ⚙</button>
+    <button id="btnTheme" class="btn" title="Theme">◐</button>
+  </header>
+
+  <nav class="tabs" id="tabs" aria-label="Sections">
+    <button class="tab on" data-view="stats" type="button">📊 My stats</button>
+    <button class="tab" data-view="lb" type="button">🏆 Leaderboard</button>
+  </nav>
+
+  <div id="viewStats">
+  <form id="form" class="search" autocomplete="off">
+    <input id="addr" type="text" spellcheck="false" placeholder="Wallet 0x… or account ID" aria-label="Wallet" autocomplete="off">
+    <select id="depth" aria-label="Fills to analyze" title="How many of the most recent fills to analyze."><option value="500">Fills: last 500</option><option value="1000" selected>Fills: last 1,000</option><option value="3000">Fills: last 3,000</option></select>
+    <button class="btn primary" type="submit">Show</button>
+    <label class="chk autoref" title="Reload the data every 60 seconds"><input type="checkbox" id="auto"> auto-refresh 60 s</label>
+  </form>
+  <div id="recent" class="recent"></div>
+  <div class="periodbar" id="periodbar" aria-label="Period"></div>
+  <div class="pnote" id="pnote"></div>
+  <div class="custom" id="custom" hidden>
+    <label>from (GMT) <input type="text" id="pf" placeholder="YYYY-MM-DD HH:MM" maxlength="16" autocomplete="off" spellcheck="false"></label>
+    <label>to (GMT) <input type="text" id="pt" placeholder="YYYY-MM-DD HH:MM" maxlength="16" autocomplete="off" spellcheck="false"></label>
+    <button class="btn small primary" id="pgo" type="button">Apply</button>
+  </div>
+  <div id="status" class="status" role="status"></div>
+
+  <div id="cardsPanel" class="panel" hidden>
+    <div class="panel-h"><b>Cards to show</b>
+      <button class="btn small" id="cardsAll">all</button><button class="btn small" id="cardsNone">none</button><button class="btn small" id="cardsReset">default</button></div>
+    <div id="cardsList" class="cardslist"></div>
+  </div>
+
+  <main id="out" class="out"></main>
+
+  <section id="welcome" class="welcome">
+    <h2>Trading stats for any wallet on Lighter Robinhood</h2>
+    <p>Paste an Ethereum address or an account ID — the site queries the public API of Lighter on Robinhood Chain directly and shows the balance, positions, PnL, volume and fill analysis.</p>
+  </section>
+  </div>
+
+  <div id="viewLb" hidden>
+    <div class="lbctl">
+      <div class="seg lbseg" id="lbWin"></div>
+      <div class="seg lbseg" id="lbSort"></div>
+      <button class="btn" id="lbRefresh" type="button">↻ Refresh</button>
+      <form id="lbFind" class="lbfind" autocomplete="off"><input id="lbAddr" type="text" spellcheck="false" placeholder="Find an address in this ranking…" aria-label="Address to find"><button class="btn small" type="submit">Find</button></form>
+    </div>
+    <div id="lbStatus" class="status" role="status"></div>
+    <div id="lbFound"></div>
+    <section class="card w12 lbcard" id="lbPointsCard" hidden><h2>Points<span class="sub" id="lbPointsSub"></span></h2><div class="scroll" style="max-height:none"><table id="lbPoints"></table></div><p class="note" id="lbPointsNote"></p></section>
+    <section class="card w12 lbcard"><div id="lbKpis" class="lbkpis"></div><div class="scroll" style="max-height:none"><table id="lbTable"></table></div><div id="lbPager" class="lbpager"></div><p class="note" id="lbNote"></p></section>
+  </div>
+
+  <footer>
+    Unofficial project, not affiliated with Lighter Robinhood. Data comes from the public API <code>GET https://api.rh.lighter.xyz/api/v1</code>; it may lag or contain exchange errors.
+    <span id="ver"></span>
+  </footer>
+</div>
+<script src="app.js?v=1793263276"></script>
+</body>
+</html>

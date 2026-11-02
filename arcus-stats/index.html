@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Arcus Trade Stats</title>
+<meta name="description" content="Unofficial trading statistics for Arcus: PnL, volume, fees, positions, liquidations, maker/taker. Enter a trading address.">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta property="og:title" content="Arcus Trade Stats (unofficial)">
+<meta property="og:description" content="Enter an Arcus trading address to see PnL, volume, fees, positions, liquidation estimates and a weekly stats image.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#111110">
+<script src="theme.js"></script>
+<link rel="stylesheet" href="style.css?v=1793262522">
+<link rel="stylesheet" href="theme.css?v=1793263110">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="../index.html" title="Back to the main page"><span class="logo"><img src="arcus-logo.svg" alt="" width="22" height="22"></span><h1>Arcus Trade Stats</h1><span class="badge">unofficial</span></a>
+    <div class="plat" id="plat" title="Loading platform stats…">Platform 24h volume <b class="num" id="platV">…</b><span class="platsep">·</span>OI <b class="num" id="platOI">…</b></div>
+    <span class="sp"></span>
+    <button id="btnShare" class="btn primary" title="Create a weekly stats image (PNG) to share, e.g. in Discord">🖼 Create stats image</button>
+    <button id="btnCards" class="btn" aria-expanded="false">Cards ⚙</button>
+    <button id="btnTheme" class="btn" title="Theme">◐</button>
+  </header>
+
+  <nav class="tabs" id="tabs" aria-label="Sections">
+    <button class="tab on" data-view="stats" type="button">📊 My stats</button>
+    <button class="tab" data-view="lb" type="button">🏆 Leaderboard</button>
+  </nav>
+
+  <div id="viewStats">
+  <form id="form" class="search" autocomplete="off">
+    <input id="addr" type="text" spellcheck="false" placeholder="Wallet address 0x…" aria-label="Wallet address" autocomplete="off">
+    <select id="sub" aria-label="Subaccount" title="Subaccount"><option value="0">subaccount 0</option></select>
+    <select id="depth" aria-label="Fills to analyze" title="How many of the most recent fills to analyze. If the analysis looks incomplete, pick a larger number.">
+      <option value="1000">Fills: last 1,000</option><option value="5000" selected>Fills: last 5,000</option><option value="20000">Fills: last 20,000</option><option value="100000">Fills: up to 100,000 (slow)</option></select>
+    <button class="btn primary" type="submit">Show</button>
+    <label class="chk autoref" title="Reload the data every 60 seconds"><input type="checkbox" id="auto"> auto-refresh 60 s</label>
+  </form>
+  <div id="recent" class="recent"></div>
+  <div class="periodbar" id="periodbar" aria-label="Period"></div>
+  <div class="pnote" id="pnote"></div>
+  <div class="custom" id="custom" hidden>
+    <label>from (GMT) <input type="text" id="pf" data-cal placeholder="YYYY-MM-DD HH:MM" maxlength="16" autocomplete="off" spellcheck="false"><button type="button" class="calbtn" data-cal="pf" aria-label="Pick start date">📅</button></label>
+    <label>to (GMT) <input type="text" id="pt" data-cal placeholder="YYYY-MM-DD HH:MM" maxlength="16" autocomplete="off" spellcheck="false"><button type="button" class="calbtn" data-cal="pt" aria-label="Pick end date">📅</button></label>
+    <button class="btn small primary" id="pgo" type="button">Apply</button>
+  </div>
+  <div id="status" class="status" role="status"></div>
+
+  <div id="cardsPanel" class="panel" hidden>
+    <div class="panel-h"><b>Cards to show</b>
+      <button class="btn small" id="cardsAll">all</button><button class="btn small" id="cardsNone">none</button><button class="btn small" id="cardsReset">default</button></div>
+    <div id="cardsList" class="cardslist"></div>
+  </div>
+
+  <main id="out" class="out"></main>
+
+  <section id="welcome" class="welcome">
+    <h2>Trading stats for any address on Arcus</h2>
+    <p>Paste an address — the site queries the public Arcus API directly and shows equity, PnL, volume, fees, positions with estimated liquidation prices, maker/taker split, per-market breakdown, funding, deposits and leaderboard rank. No keys or sign-in needed; the address is sent nowhere except the Arcus API.</p>
+    <p class="muted">Arcus points are not shown per address: their API returns them only to the wallet owner after sign-in.</p>
+  </section>
+  </div>
+
+  <div id="viewLb" hidden>
+    <div class="lbctl">
+      <div class="seg lbseg" id="lbWin"><button data-w="24h" type="button">Last 24 hours</button><button data-w="30d" type="button">Last 30 days</button><button data-w="all" type="button">All time</button></div>
+      <div class="seg lbseg" id="lbSort"><button data-s="volume" type="button">By volume</button><button data-s="pnl" type="button">By realized PnL</button><button data-s="fees" type="button">By fees paid</button></div>
+      <button class="btn" id="lbRefresh" type="button">↻ Refresh</button>
+      <form id="lbFind" class="lbfind" autocomplete="off"><input id="lbAddr" type="text" spellcheck="false" placeholder="Find an address in this ranking…" aria-label="Address to find"><button class="btn small" type="submit">Find</button></form>
+    </div>
+    <div id="lbStatus" class="status" role="status"></div>
+    <div id="lbFound"></div>
+    <section class="card w12 lbcard"><div id="lbKpis" class="lbkpis"></div><div class="scroll" style="max-height:none"><table id="lbTable"></table></div>
+      <p class="note">The table lists the top 100 (the API&#39;s limit per list), but any address can be looked up: use <b>Find</b> or open it in <b>My stats</b> — its rank is shown even if it is far outside the top 100, e.g. #2,000 of thousands. Rankings exist for 24 hours, 30 days and all time. Realized PnL is the exchange&#39;s closedPnl sum — it excludes unrealized PnL and funding. The data comes from an hourly rollup and can lag by up to an hour. Click a header to re-sort these 100 rows.</p>
+    </section>
+  </div>
+
+  <footer>
+    Unofficial project, not affiliated with Arcus. Data comes from the public API <code>api.arcus.xyz</code>; it may lag or contain exchange errors.
+    Liquidation estimates are approximate. <span id="ver"></span>
+  </footer>
+</div>
+
+<dialog id="shareDlg" class="sharedlg"><div class="shwrap">
+  <div class="shhead"><b class="shtitle">CREATE STATS IMAGE · PNG FOR DISCORD</b>
+    <button class="btn small" id="shPrev" aria-label="Previous week">‹</button><b id="shWeek">Week</b><button class="btn small" id="shNext" aria-label="Next week">›</button>
+    <span class="sp"></span><button class="btn small" id="shClose" aria-label="Close">✕</button></div>
+  <div class="shbody">
+    <div class="shform">
+      <p class="shnote shinfo">Only what you see on the card is included: no wallet address, no balances. Points are looked up by your name in the public Arcus points leaderboard, because the API does not expose points per wallet.</p>
+      <label>Display name<input id="shName" type="text" placeholder="Arcus Trade Stats" maxlength="28"></label>
+      <label><span>Points leaderboard name <span class="qtip" tabindex="0" role="note" aria-label="Where to find your name">?<span class="qtipbox"><b>Where to find it</b><span>1) Open app.arcus.xyz/rewards and log in.</span><span>2) In the Points Leaderboard find your own row, marked “You”.</span><span>3) Copy the name or the rank number from that row and paste it here.</span><img src="hint-rewards.png" alt="Your row in the Points Leaderboard on app.arcus.xyz/rewards: the rank number and the name are circled" width="280"><span class="qtipsmall">Either one works. With a rank number (for example 4208) the site looks up the name itself, useful when the name is cut off or looks different.</span></span></span> <small>(e.g. Twilight Scarlet Manta)</small></span><input id="shLbName" type="text" placeholder="Name from app.arcus.xyz/rewards, or your rank" maxlength="40" autocomplete="off" spellcheck="false"></label>
+      <div class="shnote">Copy it from your row on <a href="https://app.arcus.xyz/rewards" target="_blank" rel="noopener">app.arcus.xyz/rewards</a> (Points Leaderboard) and paste it here. You can also type your rank number.</div>
+      <label class="chk"><input type="checkbox" id="shPtsAll"> show total points (all time) instead of this week's</label>
+      <div class="shnote" id="shPtsMsg"></div>
+      <div class="shbg"><span>Background image <small>(optional)</small></span>
+        <div class="shbgrow"><button class="btn small" id="shBgBtn" type="button">Choose image…</button><button class="btn small" id="shBgClear" type="button">remove</button></div>
+        <input id="shBg" type="file" accept="image/*" hidden>
+        <label class="shdim">Dimming <input id="shDim" type="range" min="0" max="85" value="55"><span id="shDimV">55%</span></label>
+        <div class="shnote" id="shBgNote">No background selected.</div></div>
+      <div class="shbtns"><button class="btn primary" id="shDl">Download PNG</button><button class="btn" id="shCopy">Copy image</button></div>
+      <div class="shnote" id="shMsg"></div>
+      <p class="shnote">Weeks are counted from Wednesday 00:00 GMT (UTC) to the next Tuesday 23:59 GMT. This schedule is our assumption: the Arcus team has not officially confirmed that the weekly snapshot is taken at this time.</p>
+    </div>
+    <div class="shprev"><div class="shscroll"><canvas id="shCv" width="720" height="486" style="width:720px;height:486px"></canvas></div><div class="shdims" id="shDims"></div>
+    <div class="shslots" id="shSlotsBox">
+      <div class="shslotsh"><b>Card stats</b> <small>pick any 6 · the boxes match the positions on the card (row 1: 1–3, row 2: 4–6)</small>
+        <span class="shpresets" id="shPresets"><button class="btn small" data-preset="default" type="button">Default</button><button class="btn small" data-preset="activity" type="button">Activity</button><button class="btn small" data-preset="trader" type="button">Trader</button></span></div>
+      <div class="shslotsgrid" id="shSlots"></div>
+      <label class="chk"><input type="checkbox" id="shPnl" checked> show profit / loss stats <small>(unchecking replaces P&amp;L stats with activity stats; picking a P&amp;L stat checks it again)</small></label>
+    </div>
+    </div>
+  </div>
+</div></dialog>
+<div id="cal" class="cal" hidden></div>
+<script>(function(){var h=location.hostname;if(h&&h!=="localhost"&&h!=="127.0.0.1"){var b=document.querySelector("a.brand");if(b){b.removeAttribute("href");b.style.cursor="default";}}})();</script>
+<script src="app.js?v=1793262522"></script>
+</body>
+</html>

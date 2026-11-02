@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Perp DEX Stats</title>
+<meta name="description" content="Track any wallet across perpetual DEXes: balances, PnL, volume, positions and leaderboards in one place.">
+<meta name="theme-color" content="#141211">
+<link rel="icon" type="image/svg+xml" href="logo-mark.svg">
+<script src="theme.js"></script>
+<link rel="stylesheet" href="theme.css?v=1793263110">
+<link rel="stylesheet" href="style.css?v=1793263110">
+</head>
+<body>
+<header class="topbar">
+  <div class="topin">
+    <a class="brand" href="index.html" title="Perp DEX Stats"><img class="mark" src="logo-mark.svg" alt="" width="30" height="30"><span class="bname">Perp DEX Stats</span></a>
+    <span class="sp"></span>
+    <div class="plat" id="plat" title="Loading platform stats…">Platform 24h volume <b class="num" id="platV">…</b><span class="platsep"></span>OI <b class="num" id="platOI">…</b></div>
+    <button id="btnTheme" class="btn" type="button" title="Light / dark theme" aria-label="Toggle theme">◐</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <h1>Track any wallet across all <span class="accent">perpetual DEXes</span></h1>
+    <p class="sub">One place for balances, PnL, volume, positions and leaderboards.</p>
+    <form id="form" class="search" autocomplete="off">
+      <input id="addr" type="text" spellcheck="false" placeholder="Wallet address (0x… or Solana) or a Lighter account ID" aria-label="Wallet address" autocomplete="off" autofocus>
+      <button class="btn primary" type="submit"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>Scan</button>
+    </form>
+    <div id="logos" class="logos" aria-label="Connected DEXes"></div>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+  </section>
+
+  <section id="resultsWrap" class="results" hidden>
+    <h2 class="sec">Scan results</h2>
+    <ul id="list" class="dexlist"></ul>
+  </section>
+
+  <footer class="foot">Unofficial project, not affiliated with any of the listed exchanges. Data comes from their public APIs and is requested straight from your browser; the address you enter is not sent anywhere else.</footer>
+</main>
+<script src="app.js?v=24"></script>
+</body>
+</html>
