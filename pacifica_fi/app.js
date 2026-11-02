@@ -166,10 +166,16 @@ const B58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;                 // a Solana address
 const safe = p => p.catch(e => (console.warn(e), null));
 /* An IP gets 100 credits per 60 s. The header `ratelimit: "credits";r=<10 × credits left>;t=<seconds to the reset>` says how much is left, so the requests wait instead of failing. */
 const RL = { left: 1000, until: 0 };
+let FILLS_STOP = false;                                       // set by the “stop” button while the fills load
+const STOP_BTN = ' <button class="linkbtn" data-stopfills type="button">Stop and show what is loaded</button>';
 async function api(path, params = {}, o = {}) {
   const q = new URLSearchParams(); Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') q.set(k, v); });
   for (let a = 0; a < 6; a++) {
-    if (RL.left < 120 && Date.now() < RL.until) { if (o.say) o.say(`Waiting for the Pacifica API limit (${Math.ceil((RL.until - Date.now()) / 1000)} s)…`); await sleep(RL.until - Date.now() + 300); RL.left = 1000; }
+    if (RL.left < 120 && Date.now() < RL.until) {
+      while (Date.now() < RL.until + 300 && !(o.halt && o.halt())) { if (o.say) o.say(`Waiting for the Pacifica API limit (${Math.ceil(Math.max(0, RL.until - Date.now()) / 1000)} s)…`); await sleep(250); }
+      if (o.halt && o.halt()) return { data: [], has_more: false, halted: true };
+      RL.left = 1000;
+    }
     let r; try { r = await fetch(API + path + (q.toString() ? '?' + q : '')); } catch (e) { await sleep(800 * (a + 1)); continue; }
     const hd = r.headers.get('ratelimit'), m = hd && /r=(\d+);\s*t=(\d+)/.exec(hd); if (m) { RL.left = +m[1]; RL.until = Date.now() + (+m[2]) * 1000; }
     if (r.status === 429) { RL.left = 0; RL.until = Date.now() + 8000 * (a + 1); continue; }
@@ -211,18 +217,18 @@ function riskCalc(S) {
 async function pages(path, params, o) {
   const out = []; let cursor = null;
   for (let g = 0; g < 60; g++) {
-    const d = await api(path, { ...params, cursor, limit: o.limit || 1000 }, { say: o.say }); if (o.stop && o.stop()) return null;
+    const d = await api(path, { ...params, cursor, limit: o.limit || 1000 }, { say: o.say, halt: o.halt }); if (o.stop && o.stop()) return null;
     const rows = Array.isArray(d.data) ? d.data : []; out.push(...rows); if (o.onPage) o.onPage(out);
-    if (!d.has_more || !d.next_cursor || !rows.length || out.length >= o.max) break; cursor = d.next_cursor;
+    if (!d.has_more || !d.next_cursor || !rows.length || out.length >= o.max || (o.halt && o.halt())) break; cursor = d.next_cursor;
   }
   return out;
 }
 async function loadFills(key, depth, my) {
   const pr = getPeriod(), seen = new Set(), out = [];
-  const rows = await pages('/trades/history', { account: key, ...(pr ? { start_time: Math.floor(pr.from), end_time: Math.ceil(pr.to) } : {}) }, { max: depth, stop: () => my !== runId, say: m => status(m), onPage: r => status(`Loading fills… ${fmt(r.length, 0)}`) });
+  const rows = await pages('/trades/history', { account: key, ...(pr ? { start_time: Math.floor(pr.from), end_time: Math.ceil(pr.to) } : {}) }, { max: depth, stop: () => my !== runId, halt: () => FILLS_STOP, say: m => status(m + STOP_BTN), onPage: r => status(`Loading fills… ${fmt(r.length, 0)}${STOP_BTN}`) });
   if (!rows) return null;
   for (const f of rows) if (!seen.has(f.history_id)) { seen.add(f.history_id); out.push(normTrade(f)); }
-  out.sort((a, b) => b.t - a.t); return { fills: out.slice(0, depth), truncated: rows.length >= depth };
+  out.sort((a, b) => b.t - a.t); return { fills: out.slice(0, depth), truncated: rows.length >= depth || FILLS_STOP, stopped: FILLS_STOP };
 }
 async function loadFunding(key, my) {
   const pr = getPeriod(), from = pr ? pr.from : Date.now() - 90 * 864e5, rows = await pages('/funding/history', { account: key }, { max: 8000, stop: () => my !== runId });
@@ -244,7 +250,7 @@ function CURVE(S, k) {                                      // equity / PnL hist
   return k === 'pnl' ? pts.map(p => [p[0], p[1] - pts[0][1]]) : pts;
 }
 async function loadWallet(key, opts = {}) {
-  const my = ++runId, say = m => { if (my === runId) status(m); };
+  const my = ++runId, say = m => { if (my === runId) status(m); }; FILLS_STOP = false;
   if (!opts.silent) { status('Loading wallet data…'); S = null; $('#out').innerHTML = ''; $('#welcome').hidden = true; }
   let acc, pos, prx;
   try { [acc, pos, prx] = await Promise.all([api('/account', { account: key }, { say }), api('/positions', { account: key }, { say }), prices()]); }
@@ -261,7 +267,7 @@ async function loadWallet(key, opts = {}) {
   S.orders = ord && ord.data || []; S.port = port || []; S.funding = fund; S.ledger = led; S.ohist = oh && oh.data || []; S.sets = sets && sets.data || null; render();
   try {
     const r = await loadFills(key, +$('#depth').value, my); if (!live() || !r) return;
-    S.fills = r.fills; S.fillsDone = true; S.trunc = r.truncated; render(); status(r.truncated ? (getPeriod() ? 'This period has more fills than the chosen depth: the statistics cover the loaded part only.' : 'Showing the most recent fills only; pick a larger depth to analyze more.') : '');
+    S.fills = r.fills; S.fillsDone = true; S.trunc = r.truncated; S.stopped = r.stopped; render(); status(r.stopped ? `Stopped: the statistics cover the ${fmt(r.fills.length, 0)} fills loaded so far.` : r.truncated ? (getPeriod() ? 'This period has more fills than the chosen depth: the statistics cover the loaded part only.' : ($('#depth').selectedIndex < $('#depth').options.length - 1 ? 'Showing the most recent fills only; pick a larger depth to analyze more.' : 'This is the largest depth the page loads: the statistics cover the latest ' + fmt(r.fills.length, 0) + ' fills only.')) : '');
   } catch (e) { if (live()) status('Fills: ' + esc(e.message), true); }
   safe(api('/lake/list', { account: key })).then(d => { if (!live() || !d) return; S.lakes = (d.data && d.data.lakes) || []; if (S.lakes.some(x => x.address === key)) S.tags = ['Pacifica vault']; render(); });
 }
@@ -343,11 +349,14 @@ const ORDER = ['summary', 'volume', 'pnl', 'equity', 'pnlchart', 'risk', 'positi
 function status(html, err) { const s = $('#status'), busy = /^Loading/.test(html); s.className = 'status' + (err ? ' err' : '') + (busy ? ' busy' : ''); s.innerHTML = (busy ? '<i class="spin"></i>' : '') + html; }
 let enabled = new Set(store.get('cards', DEFAULT_CARDS));
 { const seen = new Set(store.get('cards_seen', [])); DEFAULT_CARDS.forEach(id => { if (!seen.has(id)) enabled.add(id); }); store.set('cards_seen', DEFAULT_CARDS); store.set('cards', [...enabled]); }
+const isIdle = S => S.fillsDone && !S.fills.length && !S.pos.length && n(S.acc.balance) < 1 && !(S.ledger || []).length && !(S.funding || []).length && !(S.orders || []).length && !(S.ohist || []).length;   // nothing ever happened on this account
 function render() {
   if (!S) return;
   S.fs = fillStats(S.fills); if (CFG.prepare) CFG.prepare(S);
-  const out = $('#out'), ix = c => { const i = ORDER.indexOf(c.id); return i < 0 ? 99 : i; }, list = CARDS.filter(c => enabled.has(c.id)).sort((a, b) => ix(a) - ix(b)).map(c => ({ ...c, html: c.render(S) })).filter(c => c.html !== '');
-  out.innerHTML = `<div class="hdr"><code class="addr">${esc(S.label)}</code>${(S.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}<span class="muted" id="upd"></span></div>` + list.map(c =>
+  const out = $('#out'), ix = c => { const i = ORDER.indexOf(c.id); return i < 0 ? 99 : i; }; let list = CARDS.filter(c => enabled.has(c.id)).sort((a, b) => ix(a) - ix(b)).map(c => ({ ...c, html: c.render(S) })).filter(c => c.html !== '');
+  if (isIdle(S)) { const sm = list.find(c => c.id === 'summary'); list = [sm, { id: 'idle', title: 'No activity', w: 8, html: '<div class="empty">This account has no trades, open positions, orders or deposits on Pacifica yet (balance about $0), so there is nothing to analyze.</div>' }].filter(Boolean); }
+  else if (S.fillsDone && !S.fills.length) { list = list.filter(c => !['activity', 'curve', 'daily', 'hourly', 'bymarket', 'fills'].includes(c.id)); const at = list.findIndex(c => c.id === 'positions'); list.splice(at < 0 ? list.length : at + 1, 0, { id: 'nofills', title: 'No trades', w: 8, html: '<div class="empty">' + (S.stopped ? 'Loading was stopped before any trades arrived. Reload the wallet to try again.' : getPeriod() ? 'No trades in this period.' : 'No trades found for this account.') + '</div>' }); }
+  out.innerHTML = `<div class="hdr"><code class="addr">${esc(S.label)}</code>${(S.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}${S.trunc ? `<span class="tag" style="background:var(--warn-bg);color:var(--warn)" title="Only the most recent fills fit the page limit, so volume, fees and PnL below count only the loaded fills.">${S.stopped ? 'stopped early: ' + fmt(S.fills.length, 0) + ' fills loaded' : 'history incomplete: latest ' + fmt(S.fills.length, 0) + ' fills'}</span>` : ''}<span class="muted" id="upd"></span></div>` + list.map(c =>
     `<section class="card w${c.w}" data-card="${c.id}"><h2>${c.title}${c.sub ? `<span class="sub">${typeof c.sub === 'function' ? c.sub(S) : c.sub}</span>` : ''}</h2>${c.html}</section>`).join('');
   const draw = () => list.forEach(c => { if (c.after) { try { c.after($(`[data-card=${c.id}]`, out), S); } catch (e) { console.error(c.id, e); } } });
   draw(); cancelAnimationFrame(render.raf); render.raf = requestAnimationFrame(() => { const w = out.clientWidth; if (w !== render.w) { render.w = w; draw(); } });
@@ -381,6 +390,7 @@ let autoTimer; $('#auto').onchange = () => { clearInterval(autoTimer); if ($('#a
 const root = document.documentElement; { const t = store.get('theme', null); if (t) root.dataset.theme = t; }
 $('#btnTheme').onclick = () => { const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; root.dataset.theme = dark ? 'light' : 'dark'; store.set('theme', root.dataset.theme); render(); };
 addEventListener('hashchange', () => { const k = CFG.parse(decodeURIComponent(location.hash.slice(1))); if (k && (!S || S.key !== k)) { $('#addr').value = k; CFG.load(k); } });
+document.addEventListener('click', e => { if (e.target.closest('[data-stopfills]')) { FILLS_STOP = true; status('Stopping…'); } });
 document.addEventListener('click', e => {
   const c = e.target.closest('[data-copy]'); if (c) { try { navigator.clipboard.writeText(c.dataset.copy); const t = c.textContent; c.textContent = 'copied'; setTimeout(() => { c.textContent = t; }, 1200); } catch (err) { } }
 });

@@ -17,6 +17,15 @@
 .back{font-size:12px;font-weight:600;padding:5px 11px;border-radius:99px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2,inherit);text-decoration:none;white-space:nowrap}
 .back:hover{border-color:var(--accent-line,var(--s1));color:var(--ink)}
 </style>
+<style>
+.noticedlg{border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--ink);padding:0;width:min(480px,92vw)}
+.noticedlg::backdrop{background:rgba(0,0,0,.6)}
+.ndwrap{padding:20px 22px 18px}
+.ndwrap h2{margin:0 0 12px;font-size:17px;letter-spacing:-.01em}
+.ndwrap p{margin:0 0 10px;font-size:13.5px;line-height:1.5;color:var(--ink-2)}
+.ndwrap .muted{font-size:12px}
+.ndbtn{display:flex;justify-content:flex-end;margin-top:14px}
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -37,7 +46,7 @@
   <div id="viewStats">
   <form id="form" class="search" autocomplete="off">
     <input id="addr" type="text" spellcheck="false" placeholder="Wallet 0x… or account ID" aria-label="Wallet" autocomplete="off">
-    <select id="depth" aria-label="Fills to analyze" title="How many of the most recent fills to analyze."><option value="500">Fills: last 500</option><option value="1000" selected>Fills: last 1,000</option><option value="3000">Fills: last 3,000</option></select>
+    <select id="depth" aria-label="Fills to analyze" title="How many of the most recent fills to analyze."><option value="500">Fills: last 500</option><option value="1000">Fills: last 1,000</option><option value="3000" selected>Fills: last 3,000</option><option value="10000">Fills: last 10,000</option></select>
     <button class="btn primary" type="submit">Show</button>
     <label class="chk autoref" title="Reload the data every 60 seconds"><input type="checkbox" id="auto"> auto-refresh 60 s</label>
   </form>
@@ -83,6 +92,14 @@
     <span id="ver"></span>
   </footer>
 </div>
-<script src="app.js?v=1793700005"></script>
+<script src="app.js?v=1793700030"></script>
+<dialog id="noticeDlg" class="noticedlg" aria-labelledby="noticeTitle"><div class="ndwrap">
+  <h2 id="noticeTitle">This site connects to the Lighter Robinhood API</h2>
+  <p>This site reads data directly from the public Lighter Robinhood API (<b>api.rh.lighter.xyz</b>), from your browser and your IP address.</p>
+  <p>If you open many wallets in a short time or refresh the page very often, the request limit can be exceeded and the API may temporarily refuse requests from your IP: the page then shows no data or an error. This usually goes away after a few minutes.</p>
+  <p class="muted">This is an unofficial site, not affiliated with Lighter Robinhood.</p>
+  <div class="ndbtn"><button class="btn primary" id="noticeOk" type="button">Got it</button></div>
+</div></dialog>
+<script>(function(){var dlg=document.getElementById('noticeDlg'),k='perpdex_notice_seen',seen=false;try{seen=localStorage.getItem(k)==='1';}catch(e){}if(!dlg||seen)return;dlg.addEventListener('close',function(){try{localStorage.setItem(k,'1');}catch(e){}});document.getElementById('noticeOk').onclick=function(){try{localStorage.setItem(k,'1');}catch(e){}dlg.close();};try{dlg.showModal();}catch(e){dlg.setAttribute('open','');}})();</script>
 </body>
 </html>

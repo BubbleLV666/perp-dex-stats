@@ -10,6 +10,17 @@
 <script src="theme.js"></script>
 <link rel="stylesheet" href="theme.css?v=1793263110">
 <link rel="stylesheet" href="style.css?v=1793263110">
+<style>
+.noticedlg{border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--ink);padding:0;width:min(480px,92vw)}
+.noticedlg::backdrop{background:rgba(0,0,0,.6)}
+.ndwrap{padding:20px 22px 18px}
+.ndwrap h2{margin:0 0 12px;font-size:17px;letter-spacing:-.01em}
+.ndwrap p{margin:0 0 10px;font-size:13.5px;line-height:1.5;color:var(--ink-2)}
+.ndwrap .muted{font-size:12px}
+.ndbtn{display:flex;justify-content:flex-end;margin-top:14px}
+#noticeOk{background:var(--accent,var(--s1,#d97a2b));color:#fff;border:0;border-radius:8px;padding:8px 20px;font:inherit;font-weight:600;cursor:pointer}
+#noticeOk:hover{filter:brightness(1.1)}
+</style>
 </head>
 <body>
 <header class="topbar">
@@ -40,6 +51,14 @@
 
   <footer class="foot">Unofficial project, not affiliated with any of the listed exchanges. Data comes from their public APIs and is requested straight from your browser; the address you enter is not sent anywhere else.</footer>
 </main>
-<script src="app.js?v=24"></script>
+<script src="app.js?v=25"></script>
+<dialog id="noticeDlg" class="noticedlg" aria-labelledby="noticeTitle"><div class="ndwrap">
+  <h2 id="noticeTitle">This site connects to the public APIs of the exchanges</h2>
+  <p>When you check a wallet, this site asks the public APIs of every listed exchange directly from your browser and your IP address. The address is not sent to our own server.</p>
+  <p>If you scan many wallets in a short time or refresh the page very often, an exchange may temporarily refuse requests from your IP. That exchange will then show “Unavailable right now” or no result; it usually works again after a few minutes.</p>
+  <p class="muted">This is an unofficial site, not affiliated with any of the listed exchanges.</p>
+  <div class="ndbtn"><button class="btn primary" id="noticeOk" type="button">Got it</button></div>
+</div></dialog>
+<script>(function(){var dlg=document.getElementById('noticeDlg'),k='perpdex_notice_seen',seen=false;try{seen=localStorage.getItem(k)==='1';}catch(e){}if(!dlg||seen)return;dlg.addEventListener('close',function(){try{localStorage.setItem(k,'1');}catch(e){}});document.getElementById('noticeOk').onclick=function(){try{localStorage.setItem(k,'1');}catch(e){}dlg.close();};try{dlg.showModal();}catch(e){dlg.setAttribute('open','');}})();</script>
 </body>
 </html>

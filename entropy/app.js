@@ -283,7 +283,7 @@ async function loadWallet(key, opts = {}) {
   if (!live()) return; S.orders = Array.isArray(orders) ? orders : []; S.ledger = ledger; S.funding = fund; render();
   try {
     const r = await loadFills(key, +$('#depth').value, my); if (!live() || !r) return;
-    S.fills = r.fills; S.fillsDone = true; S.trunc = r.truncated; render(); status(r.truncated ? (getPeriod() ? 'This period has more fills than the API makes available: the statistics cover the loaded part only.' : 'Showing the most recent fills only; pick a larger depth to analyze more.') : '');
+    S.fills = r.fills; S.fillsDone = true; S.trunc = r.truncated; render(); status(r.truncated ? (getPeriod() ? 'This period has more fills than the API makes available: the statistics cover the loaded part only.' : ($('#depth').selectedIndex < $('#depth').options.length - 1 ? 'Showing the most recent fills only; pick a larger depth to analyze more.' : 'This is the largest depth the page loads: the statistics cover the latest ' + fmt(r.fills.length, 0) + ' fills only.')) : '');
   } catch (e) { if (live()) status('Fills: ' + esc(e.message), true); }
 }
 function portMap(p) { const o = {}; (Array.isArray(p) ? p : []).forEach(x => { o[x[0]] = x[1]; }); return o; }
@@ -438,11 +438,14 @@ const ORDER = ['summary', 'volume', 'pnl', 'equity', 'pnlchart', 'risk', 'positi
 function status(html, err) { const s = $('#status'), busy = /^Loading/.test(html); s.className = 'status' + (err ? ' err' : '') + (busy ? ' busy' : ''); s.innerHTML = (busy ? '<i class="spin"></i>' : '') + html; }
 let enabled = new Set(store.get('cards', DEFAULT_CARDS));
 { const seen = new Set(store.get('cards_seen', [])); DEFAULT_CARDS.forEach(id => { if (!seen.has(id)) enabled.add(id); }); store.set('cards_seen', DEFAULT_CARDS); store.set('cards', [...enabled]); }
+const isIdle = S => S.fillsDone && !S.fills.length && !((S.ch && S.ch.assetPositions) || []).length && n(S.perpEq) < 1 && !(S.orders || []).length && !(S.funding || []).length;   // nothing on the io dex
 function render() {
   if (!S) return;
   S.fs = fillStats(S.fills); if (CFG.prepare) CFG.prepare(S);
-  const out = $('#out'), ix = c => { const i = ORDER.indexOf(c.id); return i < 0 ? 99 : i; }, list = CARDS.filter(c => enabled.has(c.id)).sort((a, b) => ix(a) - ix(b)).map(c => ({ ...c, html: c.render(S) })).filter(c => c.html !== '');
-  out.innerHTML = `<div class="hdr"><code class="addr">${esc(S.label)}</code>${(S.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}<span class="muted" id="upd"></span></div>` + list.map(c =>
+  const out = $('#out'), ix = c => { const i = ORDER.indexOf(c.id); return i < 0 ? 99 : i; }; let list = CARDS.filter(c => enabled.has(c.id)).sort((a, b) => ix(a) - ix(b)).map(c => ({ ...c, html: c.render(S) })).filter(c => c.html !== '');
+  if (isIdle(S)) { const sm = list.find(c => c.id === 'summary'); list = [sm, { id: 'idle', title: 'No activity', w: 8, html: '<div class="empty">This wallet has no positions, orders or trades on the Entropy dex (io). It may trade elsewhere on Hyperliquid, but this page shows the io dex only.</div>' }].filter(Boolean); }
+  else if (S.fillsDone && !S.fills.length) { list = list.filter(c => !['activity', 'curve', 'daily', 'hourly', 'bymarket', 'fills'].includes(c.id)); const at = list.findIndex(c => c.id === 'positions'); list.splice(at < 0 ? list.length : at + 1, 0, { id: 'nofills', title: 'No trades', w: 8, html: '<div class="empty">' + (S.stopped ? 'Loading was stopped before any trades arrived. Reload the wallet to try again.' : getPeriod() ? 'No trades in this period.' : 'No trades found for this account.') + '</div>' }); }
+  out.innerHTML = `<div class="hdr"><code class="addr">${esc(S.label)}</code>${(S.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}${S.trunc ? `<span class="tag" style="background:var(--warn-bg);color:var(--warn)" title="Only the most recent fills fit the page limit, so volume, fees and PnL below count only the loaded fills.">${S.stopped ? 'stopped early: ' + fmt(S.fills.length, 0) + ' fills loaded' : 'history incomplete: latest ' + fmt(S.fills.length, 0) + ' fills'}</span>` : ''}<span class="muted" id="upd"></span></div>` + list.map(c =>
     `<section class="card w${c.w}" data-card="${c.id}"><h2>${c.title}${c.sub ? `<span class="sub">${typeof c.sub === 'function' ? c.sub(S) : c.sub}</span>` : ''}</h2>${c.html}</section>`).join('');
   const draw = () => list.forEach(c => { if (c.after) { try { c.after($(`[data-card=${c.id}]`, out), S); } catch (e) { console.error(c.id, e); } } });
   draw(); cancelAnimationFrame(render.raf); render.raf = requestAnimationFrame(() => { const w = out.clientWidth; if (w !== render.w) { render.w = w; draw(); } });

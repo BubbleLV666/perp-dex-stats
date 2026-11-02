@@ -202,7 +202,7 @@ const riskCard = { id: 'risk', title: 'Risk & liquidation', sub: 'now', w: 6, re
 const API = 'https://api.rh.lighter.xyz/api/v1';
 const EVM = /^0x[0-9a-fA-F]{40}$/;
 const CFG = {
-  prefix: 'lrh_', depth: 1000, badInput: 'Enter an Ethereum address (0x + 40 hex characters) or a numeric Lighter account ID',
+  prefix: 'lrh_', depth: 3000, badInput: 'Enter an Ethereum address (0x + 40 hex characters) or a numeric Lighter account ID',
   parse: t => { t = String(t || '').trim().replace(/^#/, ''); return EVM.test(t) ? t.toLowerCase() : /^\d{1,12}$/.test(t) ? String(+t) : null; },
   prepare: S => { S.risk = riskCalc(S); },
   load: (key, o) => loadWallet(key, o),

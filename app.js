@@ -21,6 +21,30 @@ async function retrying(doFetch) {            // fetch with backoff on network e
 
 /* Each DEX: `scan(addr)` resolves to { balance, link } when the wallet has an account there, or null when it has none. Throws on API failure. */
 const DEXES = [
+  { id: 'hyperliquid', name: 'Hyperliquid', logo: 'logos/hyperliquid.png', home: 'hyperliquid-stats/index.html', accepts: a => EVM.test(a),
+    async scan(addr) {                         // perps account value + spot balances; in unified accounts the margin sits inside the spot balance
+      const a = addr.toLowerCase(), HL = 'https://api.hyperliquid.xyz/info';
+      const [ch, sp, ab] = await Promise.all([post(HL, { type: 'clearinghouseState', user: a }), post(HL, { type: 'spotClearinghouseState', user: a }), post(HL, { type: 'userAbstraction', user: a })]);
+      if (!ch.r.ok || !ch.body || !ch.body.marginSummary) throw new Error('HTTP ' + ch.r.status);
+      const perp = n(ch.body.marginSummary.accountValue), upnl = (ch.body.assetPositions || []).reduce((s, x) => s + n(x.position.unrealizedPnl), 0);
+      const bals = ((sp.body && sp.body.balances) || []).filter(b => n(b.total));
+      let spot = 0;
+      if (bals.some(b => b.coin !== 'USDC')) {
+        const [meta, mids] = await Promise.all([post(HL, { type: 'spotMeta' }), post(HL, { type: 'allMids' })]);
+        const usd = {}; ((meta.body && meta.body.universe) || []).forEach(u => { if (u.tokens[1] === 0) usd[u.tokens[0]] = u.name; });
+        for (const b of bals) { const px = b.coin === 'USDC' ? 1 : n((mids.body || {})[usd[b.token]]); spot += px ? n(b.total) * px : n(b.entryNtl); }
+      } else bals.forEach(b => { spot += n(b.total); });
+      const unified = /unified|portfolio/i.test(String(ab.body || ''));
+      let hip = 0;                             // every HIP-3 dex (builder-deployed perps) keeps its own margin account
+      try {
+        const dl = await post(HL, { type: 'perpDexs' });
+        const rows = await Promise.all(((dl.body || []).filter(Boolean)).map(d => post(HL, { type: 'clearinghouseState', user: a, dex: d.name }).then(x => n(x.body && x.body.marginSummary && x.body.marginSummary.accountValue), () => 0)));
+        hip = rows.reduce((x, y) => x + y, 0);
+      } catch (e) { }
+      return { balance: (unified ? spot + upnl : perp + spot) + hip, link: 'hyperliquid-stats/index.html#' + a };
+    } },
+  { id: 'lighter', name: 'Lighter', logo: 'logos/lighter.png', home: 'lighter-stats/index.html', accepts: a => EVM.test(a) || ID.test(a), scan: a => lighterScan('https://mainnet.zklighter.elliot.ai/api/v1', 'lighter-stats', a) },
+  { id: 'lighter-rh', name: 'Lighter Robinhood', logo: 'logos/lighter.png', home: 'lighter-robinhood-stats/index.html', accepts: a => EVM.test(a) || ID.test(a), scan: a => lighterScan('https://api.rh.lighter.xyz/api/v1', 'lighter-robinhood-stats', a) },
   { id: 'arcus', name: 'Arcus', logo: 'arcus-stats/arcus-logo.svg', home: 'arcus-stats/index.html', accepts: a => EVM.test(a),
     async scan(addr) {                         // balance is summed over subaccounts 0–9
       const a = addr.toLowerCase(), found = [];
@@ -48,30 +72,6 @@ const DEXES = [
       const acct = body && body[0] && body[0].fullAccount; if (!acct) return null;
       return { balance: n((acct.margin || {}).totalMargin), link: 'bulk/index.html#' + addr };
     } },
-  { id: 'hyperliquid', name: 'Hyperliquid', logo: 'logos/hyperliquid.png', home: 'hyperliquid-stats/index.html', accepts: a => EVM.test(a),
-    async scan(addr) {                         // perps account value + spot balances; in unified accounts the margin sits inside the spot balance
-      const a = addr.toLowerCase(), HL = 'https://api.hyperliquid.xyz/info';
-      const [ch, sp, ab] = await Promise.all([post(HL, { type: 'clearinghouseState', user: a }), post(HL, { type: 'spotClearinghouseState', user: a }), post(HL, { type: 'userAbstraction', user: a })]);
-      if (!ch.r.ok || !ch.body || !ch.body.marginSummary) throw new Error('HTTP ' + ch.r.status);
-      const perp = n(ch.body.marginSummary.accountValue), upnl = (ch.body.assetPositions || []).reduce((s, x) => s + n(x.position.unrealizedPnl), 0);
-      const bals = ((sp.body && sp.body.balances) || []).filter(b => n(b.total));
-      let spot = 0;
-      if (bals.some(b => b.coin !== 'USDC')) {
-        const [meta, mids] = await Promise.all([post(HL, { type: 'spotMeta' }), post(HL, { type: 'allMids' })]);
-        const usd = {}; ((meta.body && meta.body.universe) || []).forEach(u => { if (u.tokens[1] === 0) usd[u.tokens[0]] = u.name; });
-        for (const b of bals) { const px = b.coin === 'USDC' ? 1 : n((mids.body || {})[usd[b.token]]); spot += px ? n(b.total) * px : n(b.entryNtl); }
-      } else bals.forEach(b => { spot += n(b.total); });
-      const unified = /unified|portfolio/i.test(String(ab.body || ''));
-      let hip = 0;                             // every HIP-3 dex (builder-deployed perps) keeps its own margin account
-      try {
-        const dl = await post(HL, { type: 'perpDexs' });
-        const rows = await Promise.all(((dl.body || []).filter(Boolean)).map(d => post(HL, { type: 'clearinghouseState', user: a, dex: d.name }).then(x => n(x.body && x.body.marginSummary && x.body.marginSummary.accountValue), () => 0)));
-        hip = rows.reduce((x, y) => x + y, 0);
-      } catch (e) { }
-      return { balance: (unified ? spot + upnl : perp + spot) + hip, link: 'hyperliquid-stats/index.html#' + a };
-    } },
-  { id: 'lighter', name: 'Lighter', logo: 'logos/lighter.png', home: 'lighter-stats/index.html', accepts: a => EVM.test(a) || ID.test(a), scan: a => lighterScan('https://mainnet.zklighter.elliot.ai/api/v1', 'lighter-stats', a) },
-  { id: 'lighter-rh', name: 'Lighter Robinhood', logo: 'logos/lighter.png', home: 'lighter-robinhood-stats/index.html', accepts: a => EVM.test(a) || ID.test(a), scan: a => lighterScan('https://api.rh.lighter.xyz/api/v1', 'lighter-robinhood-stats', a) },
   { id: 'metric', name: 'Metric', logo: 'logos/metric.svg', home: 'metric-stats/index.html', accepts: a => EVM.test(a),
     async scan(addr) {                         // value of the liquidity positions on every network Metric runs on
       const a = addr.toLowerCase(), API = 'https://api.metric.xyz/public/v1'; let total = 0, any = false;
