@@ -107,12 +107,30 @@ function fillStats(fills) {
   }
   return F;
 }
-const fsub = S => { const pr = getPeriod(); return (pr ? pr.label + ' · ' : '') + (S.fillsDone ? `${fmt(S.fills.length, 0)} fills` : 'loading…'); };
+/* hold time: a round trip starts when a market goes from flat to a position and ends when it is flat again (or flips to the other side).
+   A closing fill that arrives while the market is flat in the loaded history belongs to a position opened before it: that trip is skipped. Spot markets (BASE/QUOTE) are not included. */
+function holdTrips(fills) {
+  const pos = {}, trips = [];
+  for (const f of fills.slice().sort((a, b) => a.t - b.t)) {
+    if (String(f.m).includes('/')) continue;
+    const st = pos[f.m] || (pos[f.m] = { p: 0, t0: 0, pnl: 0, long: true }), d = f.side === 'B' ? f.sz : -f.sz;
+    if (Math.abs(st.p) < 1e-9) { if (f.pnl) continue; st.p = d; st.t0 = f.t; st.pnl = -f.fee; st.long = d > 0; continue; }
+    const np = st.p + d; st.pnl += f.pnl - f.fee;
+    if (Math.abs(np) < 1e-7 || st.p * np < 0) {
+      trips.push({ m: f.m, t0: st.t0, t1: f.t, dur: f.t - st.t0, pnl: st.pnl, long: st.long });
+      if (Math.abs(np) < 1e-7) st.p = 0; else { st.p = np; st.t0 = f.t; st.pnl = 0; st.long = np > 0; }
+    } else st.p = np;
+  }
+  return trips;
+}
+const durFmt = ms => { const s = Math.round(ms / 1000); if (s < 60) return s + 's'; const m = Math.floor(s / 60); if (m < 60) return m + 'm ' + String(s % 60).padStart(2, '0') + 's'; const h = Math.floor(m / 60); if (h < 24) return h + 'h ' + String(m % 60).padStart(2, '0') + 'm'; const d = Math.floor(h / 24); return d + 'd ' + (h % 24) + 'h'; };
+const med = a => { const x = a.slice().sort((p, q) => p - q), k = x.length >> 1; return x.length % 2 ? x[k] : (x[k - 1] + x[k]) / 2; };
+const fsub = S => { const pr = getPeriod(); return (pr ? pr.label + ' · ' : '') + (S.fillsDone ? `${fmt(S.vf.length, 0)} fills` : 'loading…'); };
 const SHOWN = { fills: 100 };
 const moreNote = (k, total, what) => total <= SHOWN[k] ? '' : `<p class="note">Showing the latest ${fmt(SHOWN[k], 0)} of ${fmt(total, 0)} ${what}. <button class="linkbtn" data-more="${k}" type="button">Show 200 more</button> <button class="linkbtn" data-more="${k}:all" type="button">Show all</button></p>`;
 const COMMON_CARDS = [
   { id: 'activity', title: 'Trading style', sub: fsub, w: 4, render(S) {
-    const F = S.fs; if (!S.fills.length) return S.fillsDone ? '<div class="empty">No fills</div>' : '<div class="empty">Loading fills…</div>';
+    const F = S.fs; if (!S.vf.length) return S.fillsDone ? '<div class="empty">No fills</div>' : '<div class="empty">Loading fills…</div>';
     const span = (F.t1 - F.t0) / 1000, closed = F.wins + F.losses, pf = F.lossSum ? F.winSum / -F.lossSum : null;
     return `<div class="rows">` + row('Fills', fmt(F.n, 0)) + row('Period', `${dtl(F.t0)} – ${dtl(F.t1)}`) + row('Volume', '$' + big(F.vol)) +
       row('Maker / taker (by volume)', `${fmt(F.mvol / (F.vol || 1) * 100, 0)}% / ${fmt(F.tvol / (F.vol || 1) * 100, 0)}%`) +
@@ -122,7 +140,16 @@ const COMMON_CARDS = [
       row('Profit factor', pf == null ? '—' : fmt(pf, 2), 'Gross profit divided by gross loss of closing fills.') + row('Best / worst', `${smoney(F.maxWin, 2)} / ${smoney(F.maxLoss, 2)}`) +
       row('Realized PnL − fees', `<span class="${cls(F.pnl - F.fees)}">${smoney(F.pnl - F.fees, 2)}</span>`) +
       row('Buys / sells', `${fmt(F.buyVol / (F.vol || 1) * 100, 0)}% / ${fmt(F.sellVol / (F.vol || 1) * 100, 0)}%`) +
-      (F.liqs ? row('Liquidation fills', `<span class="neg">${F.liqs}</span>`) : '') + `</div>`;
+      (F.liqs ? row('Liquidation fills', `<span class="neg">${F.liqs}</span>`) : '') + `</div>` + (MODE === 'spot' ? '<p class="note">The exchange reports no PnL per spot fill, so win rate, profit factor and the PnL curve stay empty here. Spot PnL for the period is in the Profit card.</p>' : '');
+  } },
+  { id: 'hold', title: 'Hold time', sub: fsub, w: 4, render(S) {
+    if (MODE === 'spot') return '<div class="empty">Hold time is for perpetual positions: pick Perps or All</div>';
+    if (!S.vf.length) return S.fillsDone ? '<div class="empty">No fills</div>' : '<div class="empty">Loading fills…</div>';
+    const T = holdTrips(S.vf); if (!T.length) return '<div class="empty">No position was both opened and closed within the loaded fills. Pick a larger fills depth to look further back.</div>';
+    const D = T.map(t => t.dur), avg = a => a.length ? durFmt(a.reduce((x, y) => x + y, 0) / a.length) : '—', W = T.filter(t => t.pnl > 0).map(t => t.dur), L = T.filter(t => t.pnl < 0).map(t => t.dur), lg = T.filter(t => t.long).map(t => t.dur), sh = T.filter(t => !t.long).map(t => t.dur);
+    return `<div class="rows">` + row('Closed positions', fmt(T.length, 0), 'A position counts from the first fill that opens it in a market until the market is flat again (or flips to the other side).') + row('Median hold time', durFmt(med(D))) + row('Average hold time', avg(D)) +
+      row('Shortest / longest', `${durFmt(Math.min(...D))} / ${durFmt(Math.max(...D))}`) + row('Winners: average', `<span class="pos">${avg(W)}</span>`, 'Closed positions with a positive result (realized PnL − fees).') + row('Losers: average', `<span class="neg">${avg(L)}</span>`) +
+      row('Long / short: average', `${avg(lg)} / ${avg(sh)}`) + `</div><p class="note">Counts positions opened and closed within the loaded fills${S.trunc ? '; the history is incomplete, so long positions are missing' : ''}. Positions still open are not included.</p>`;
   } },
   { id: 'curve', title: 'Realized PnL curve', sub: S => 'realized PnL − fees · ' + fsub(S), w: 8, render() { return '<div class="chartbox" data-ch="curve"></div>'; },
     after(el, S) { const b = $('[data-ch=curve]', el); if (S.fs.curve.length < 2) { b.innerHTML = '<div class="empty">Need more fills</div>'; return; }
@@ -141,8 +168,8 @@ const COMMON_CARDS = [
       rows.map(r => `<tr><td>${esc(r.k)}</td><td class="num">${r.fills}</td><td class="num">${fmt(r.vol, 0)}</td><td class="num">${fmt(r.mvol / (r.vol || 1) * 100, 0)}%</td><td class="num ${cls(r.pnl)}">${smoney(r.pnl, 2)}</td><td class="num">${fmt(r.fees, 2)}</td><td class="num ${cls(r.net)}">${smoney(r.net, 2)}</td><td class="num">${r.win == null ? '—' : fmt(r.win, 0)}</td></tr>`).join('') + `</tbody></table></div>`;
   } },
   { id: 'fills', title: 'Recent fills', sub: fsub, w: 12, render(S) {
-    if (!S.fills.length) return S.fillsDone ? '<div class="empty">No fills</div>' : '<div class="empty">Loading fills…</div>';
-    const rows = S.fills.slice().sort((a, b) => b.t - a.t).slice(0, SHOWN.fills);
+    if (!S.vf.length) return S.fillsDone ? '<div class="empty">No fills</div>' : '<div class="empty">Loading fills…</div>';
+    const rows = S.vf.slice().sort((a, b) => b.t - a.t).slice(0, SHOWN.fills);
     return `<div class="scroll"><table><thead><tr><th>Time</th><th>Market</th><th>Side</th><th>Size</th><th>Price</th><th>Value $</th><th>Role</th><th>Fee</th><th>Realized PnL</th></tr></thead><tbody>` +
       rows.map(f => `<tr><td>${dtl(f.t)}</td><td>${esc(f.m)}</td><td><span class="tag ${f.side === 'B' ? 'ok' : 'bad'}">${f.side === 'B' ? 'BUY' : 'SELL'}</span></td><td class="num">${fmt(f.sz, 4)}</td><td class="num">${pxf(f.px)}</td><td class="num">${fmt(f.sz * f.px, 2)}</td><td>${f.liq ? '<span class="tag bad">liquidation</span>' : f.maker ? 'maker' : 'taker'}</td><td class="num">${fmt(f.fee, 4)}</td><td class="num ${cls(f.pnl)}">${f.pnl ? smoney(f.pnl, 2) : '—'}</td></tr>`).join('') + `</tbody></table></div>` + moreNote('fills', S.fills.length, 'fills');
   } },
@@ -172,32 +199,32 @@ const CFG = {
   platform: async () => {
     const d = await get('/orderBookDetails'), oiOf = m => n(m.open_interest_usd) || n(m.open_interest) * (n(m.mark_price) || n(m.last_trade_price)), perps = (d.order_book_details || []).filter(m => m.status === 'active' || n(m.daily_quote_token_volume) > 0), spot = d.spot_order_book_details || [];
     const top = perps.slice().sort((a, b) => oiOf(b) - oiOf(a)).slice(0, 3).map(m => m.symbol + ' $' + big(oiOf(m))).join(', ');
-    return { vol: perps.reduce((s, m) => s + n(m.daily_quote_token_volume), 0), oi: perps.reduce((s, m) => s + oiOf(m), 0), title: `All ${perps.length} perpetual markets on Lighter.\nVolume: last 24 hours (rolling window). Spot volume: $${big(spot.reduce((s, m) => s + n(m.daily_quote_token_volume), 0))}.\nOI: open interest in USD. Largest: ${top}.` };
+    return { spotVol: spot.reduce((s, m) => s + n(m.daily_quote_token_volume), 0), vol: perps.reduce((s, m) => s + n(m.daily_quote_token_volume), 0), oi: perps.reduce((s, m) => s + oiOf(m), 0), title: `All ${perps.length} perpetual markets on Lighter.\nVolume: last 24 hours (rolling window). Spot volume: $${big(spot.reduce((s, m) => s + n(m.daily_quote_token_volume), 0))}.\nOI: open interest in USD. Largest: ${top}.` };
   },
   lb: {
     wins: [['24h', 'Last 24 hours'], ['7d', 'Last 7 days'], ['30d', 'Last 30 days'], ['all', 'All time']], win: '7d',
-    sorts: [['pnl', 'By PnL'], ['volume', 'By volume'], ['roi', 'By ROI'], ['account_value', 'By account value']], sort: 'pnl',
+    sorts: [['pnl', 'By PnL'], ['volume', 'By volume'], ['roi', 'By ROI'], ['account_value', 'By account value'], ['streak', 'By streak']], sort: 'pnl',
     load: (win, sort, page, size) => ltBoardLoad(win, sort, page, size),
     find: (addr, win, sort, say) => ltBoardFind(addr, win, sort, say),
     points: () => ltPoints(),
-    extra: [{ t: 'Open exposure', f: r => r.x && r.x.expo ? '$' + big(r.x.expo) : '—' }, { t: 'Largest position', f: r => r.x && r.x.big ? `${esc(r.x.asset || '')} · $${big(r.x.big)}` : '—' }, { t: 'Long / short', f: r => r.x && r.x.expo ? `${fmt(r.x.long, 0)}% / ${fmt(r.x.short, 0)}%` : '—' }, { t: 'Streak', f: r => r.x ? `${r.x.streak} <small>(best ${r.x.best})</small>` : '—' }],
+    extra: [{ t: 'Open exposure', f: r => r.x && r.x.expo ? '$' + big(r.x.expo) : '—' }, { t: 'Largest position', f: r => r.x && r.x.big ? `${esc(r.x.asset || '')} · $${big(r.x.big)}` : '—' }, { t: 'Long / short', f: r => r.x && r.x.expo ? `${fmt(r.x.long, 0)}% / ${fmt(r.x.short, 0)}%` : '—' }, { t: 'Active-day streak', tip: 'Consecutive days with activity on the account, up to today (best = the longest run ever). Counted by the exchange.', f: r => r.x ? `${r.x.streak} <small>(best ${r.x.best})</small>` : '—' }],
   },
 };
 /* ---------- leaderboard: pnlLeaderboard of the exchange (any rank by offset, ranked by pnl / volume / roi / account value) */
 const ltRow = (e, i) => ({ rank: e.rank, addr: e.l1_address, av: n(e.account_value), pnl: n(e.pnl), roi: n(e.roi), vol: n(e.volume), x: { expo: n(e.net_position), big: n(e.biggest_position_value), asset: e.biggest_position_asset, long: n(e.long_percentage), short: n(e.short_percentage), streak: n(e.streak), best: n(e.longest_streak) } });
-const ltQuery = (win, sort, extra) => ({ time_window: win, sort_by: sort, sort_dir: 'desc', ...extra });
+const ltQuery = (win, sort, extra, dir) => ({ time_window: win, sort_by: sort, sort_dir: dir || 'desc', ...extra });
 async function ltBoardLoad(win, sort, page, size) {
-  const d = await get('/pnlLeaderboard', ltQuery(win, sort, { limit: size, offset: page * size }));
+  const d = await get('/pnlLeaderboard', ltQuery(win, sort, { limit: size, offset: page * size }, LB.dir));   // LB.dir = 'asc' shows the bottom of the ranking (biggest losers for PnL)
   return { rows: (d.entries || []).map(ltRow), total: d.total, at: d.updated_at ? d.updated_at * 1000 : null, note: 'Source: the leaderboard of the exchange (refreshed hourly): every wallet ranked by the chosen metric. PnL and ROI are as reported by Lighter; open exposure, largest position and long / short describe the positions open at the time of the snapshot. The ranking covers all accounts of an address together.' };
 }
 async function ltBoardFind(addr, win, sort, say) {
   const one = await get('/pnlLeaderboard', ltQuery(win, sort, { limit: 1, offset: 0, l1_addresses: addr })), e = one.entries && one.entries[0]; if (!e) return null;
-  const row = ltRow(e), target = sort === 'pnl' ? row.pnl : sort === 'volume' ? row.vol : sort === 'roi' ? row.roi : row.av, total = one.total ? 0 : 0;
+  const row = ltRow(e), target = sort === 'pnl' ? row.pnl : sort === 'volume' ? row.vol : sort === 'roi' ? row.roi : sort === 'streak' ? row.x.streak : row.av, total = one.total ? 0 : 0;
   const all = await get('/pnlLeaderboard', ltQuery(win, sort, { limit: 1, offset: 0 })); let lo = 0, hi = Math.max(0, (all.total || 1) - 1), steps = 0;
   while (lo < hi && steps < 24) {                      // the filtered query ranks only the address itself: its place in the whole ranking is found by bisection over the offsets
     const mid = (lo + hi) >> 1; steps++; say && say(`Looking up the rank… step ${steps}`);
     const m = await get('/pnlLeaderboard', ltQuery(win, sort, { limit: 1, offset: mid })), me = m.entries && m.entries[0]; if (!me) break;
-    const v = sort === 'pnl' ? n(me.pnl) : sort === 'volume' ? n(me.volume) : sort === 'roi' ? n(me.roi) : n(me.account_value);
+    const v = sort === 'pnl' ? n(me.pnl) : sort === 'volume' ? n(me.volume) : sort === 'roi' ? n(me.roi) : sort === 'streak' ? n(me.streak) : n(me.account_value);
     if (v > target) lo = mid + 1; else hi = mid;
   }
   row.rank = lo + 1; return { rank: row.rank, row };
@@ -230,7 +257,7 @@ const FEE = 1e-6;                                  // trade fee fields are in mi
 function normTrade(t, me) {
   const isAsk = +t.ask_account_id === me, usd = n(t.usd_amount), takerSide = isAsk ? !t.is_maker_ask : !!t.is_maker_ask, spot = t.market_kind === 'spot';
   const fee = usd * FEE * n(takerSide ? t.taker_fee : t.maker_fee), pnl = spot ? 0 : n(isAsk ? t.ask_account_pnl : t.bid_account_pnl);
-  return { t: t.timestamp, m: t.market_symbol || ('#' + t.market_id), side: isAsk ? 'S' : 'B', sz: n(t.size), px: n(t.price), fee, pnl, maker: !takerSide, liq: t.type === 'liquidation' || t.type === 'deleverage', kind: t.type, id: t.trade_id };
+  return { t: t.timestamp, m: t.market_symbol || ('#' + t.market_id), side: isAsk ? 'S' : 'B', sz: n(t.size), px: n(t.price), fee, pnl, maker: !takerSide, liq: t.type === 'liquidation' || t.type === 'deleverage', kind: t.type, id: t.trade_id, spot };
 }
 async function loadTrades(idx, depth, my) {
   const pr = getPeriod(), cap = pr ? 30000 : depth, out = []; let cursor = null, done = false;
@@ -345,6 +372,7 @@ const CARDS = [
     if (!S.pnl) return '<div class="empty">Loading…</div>'; const pr = getPeriod(), { rows } = inPeriod(S), vol = rows.reduce((s, r) => s + n(r.volume), 0), F = S.fs;
     return `<div class="big num">${'$' + big(vol)}</div><div class="rows">` + row('Volume (exchange)', money(vol, 0), 'Sum of the daily / hourly volume reported by the exchange.') +
       row('Volume (loaded fills)', money(F.vol, 0), 'Volume of the fills loaded below; with a period it covers the whole period.') +
+      row('Perps / spot volume (loaded)', `${money(S.fills.filter(f => !f.spot).reduce((a, f) => a + f.sz * f.px, 0), 0)} / ${money(S.fills.filter(f => f.spot).reduce((a, f) => a + f.sz * f.px, 0), 0)}`, 'All loaded fills split by market type, whatever the Perps / Spot switch is set to.') +
       row('Fees paid (loaded fills)', money(-F.fees), 'Taker / maker fee of every loaded fill (fee rate × trade value).') + row('Fee rate (bps of volume)', F.vol ? fmt(F.fees / F.vol * 1e4, 2) : '—') +
       row('Maker / taker (by volume)', F.vol ? `${fmt(F.mvol / F.vol * 100, 0)}% / ${fmt(F.tvol / F.vol * 100, 0)}%` : '—') + row('Fills loaded', fmt(F.n, 0)) + `</div>` +
       (pr ? '' : `<p class="note">The exchange volume covers the whole history; the fills are the most recent ones, as chosen on the right.</p>`);
@@ -393,8 +421,8 @@ const CARDS = [
       `<p class="note">Lighter publishes points only for the top ${P.count} wallets (their addresses are masked). The exact points of any other wallet are visible only to its owner after signing in on the exchange site.</p>`;
   } },
   { id: 'liqs', title: 'Liquidations & ADL', sub: fsub, w: 12, render(S) {
-    if (!S.fills.length) return S.fillsDone ? '<div class="empty">No fills</div>' : '<div class="empty">Loading fills…</div>';
-    const L = S.fills.filter(f => f.liq).sort((a, b) => b.t - a.t); if (!L.length) return '<div class="empty">No liquidations or auto-deleveraging in the loaded fills</div>';
+    if (!S.vf.length) return S.fillsDone ? '<div class="empty">No fills</div>' : '<div class="empty">Loading fills…</div>';
+    const L = S.vf.filter(f => f.liq).sort((a, b) => b.t - a.t); if (!L.length) return '<div class="empty">No liquidations or auto-deleveraging in the loaded fills</div>';
     const val = L.reduce((a, f) => a + f.sz * f.px, 0), pnl = L.reduce((a, f) => a + f.pnl, 0);
     return `<div class="rows" style="margin:0 0 10px">` + row('Events', fmt(L.length, 0)) + row('Value', money(val, 0)) + row('Realized PnL', `<span class="${cls(pnl)}">${smoney(pnl)}</span>`) + `</div>` +
       `<div class="scroll" style="max-height:300px"><table><thead><tr><th>Time</th><th>Market</th><th>Event</th><th>Side</th><th>Size</th><th>Price</th><th>Value $</th><th>Fee</th><th>Realized PnL</th></tr></thead><tbody>` +
@@ -425,17 +453,18 @@ const CARDS = [
     let g = 1; const pts = p.ret.map(r => [r.timestamp * 1000, (g *= 1 + n(r.daily_return)) - 1]); lineChart(box, pts, { color: css('--s3'), zero: true, minRange: .05, axis: v => sgn(v * 100, 0) + '%', tip: v => sgn(v * 100, 2) + '%', xfmt: dshort }); } },
 ].concat(COMMON_CARDS);
 const DEFAULT_CARDS = CARDS.map(c => c.id);
-const ORDER = ['accounts', 'summary', 'volume', 'pnl', 'equity', 'pnlchart', 'risk', 'positions', 'activity', 'curve', 'points', 'daily', 'hourly', 'bymarket', 'netdep', 'assets', 'pools', 'fills', 'liqs', 'markets', 'feetier', 'poolperf'];
+const ORDER = ['accounts', 'summary', 'volume', 'pnl', 'equity', 'pnlchart', 'risk', 'positions', 'activity', 'hold', 'curve', 'points', 'daily', 'hourly', 'bymarket', 'netdep', 'assets', 'pools', 'fills', 'liqs', 'markets', 'feetier', 'poolperf'];
 
 /* ---------------------------------------------------------------- render + page wiring */
 function status(html, err) { const s = $('#status'), busy = /^Loading/.test(html); s.className = 'status' + (err ? ' err' : '') + (busy ? ' busy' : ''); s.innerHTML = (busy ? '<i class="spin"></i>' : '') + html; }
 let enabled = new Set(store.get('cards', DEFAULT_CARDS));
 { const seen = new Set(store.get('cards_seen', [])); DEFAULT_CARDS.forEach(id => { if (!seen.has(id)) enabled.add(id); }); store.set('cards_seen', DEFAULT_CARDS); store.set('cards', [...enabled]); }
+let MODE = store.get('mode', 'all'); if (!['all', 'perps', 'spot'].includes(MODE)) MODE = 'all';   // which fills the cards describe: perpetuals, spot or both
 function render() {
   if (!S) return;
-  S.fs = fillStats(S.fills); if (CFG.prepare) CFG.prepare(S);
+  S.vf = MODE === 'all' ? S.fills : S.fills.filter(f => MODE === 'spot' ? f.spot : !f.spot); S.fs = fillStats(S.vf); if (CFG.prepare) CFG.prepare(S);
   const out = $('#out'), ix = c => { const i = ORDER.indexOf(c.id); return i < 0 ? 99 : i; }, list = CARDS.filter(c => enabled.has(c.id)).sort((a, b) => ix(a) - ix(b)).map(c => ({ ...c, html: c.render(S) })).filter(c => c.html !== '');
-  out.innerHTML = `<div class="hdr"><code class="addr">${esc(S.label)}</code>${(S.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}<span class="muted" id="upd"></span></div>` + list.map(c =>
+  out.innerHTML = `<div class="hdr"><code class="addr">${esc(S.label)}</code>${(S.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}<span class="muted" id="upd"></span><span class="seg" id="mode" title="Which trades the cards below describe">${[['all', 'All'], ['perps', 'Perps'], ['spot', 'Spot']].map(([k, t]) => `<button type="button" data-mode="${k}" class="${k === MODE ? 'on' : ''}">${t}</button>`).join('')}</span></div>` + list.map(c =>
     `<section class="card w${c.w}" data-card="${c.id}"><h2>${c.title}${c.sub ? `<span class="sub">${typeof c.sub === 'function' ? c.sub(S) : c.sub}</span>` : ''}</h2>${c.html}</section>`).join('');
   const draw = () => list.forEach(c => { if (c.after) { try { c.after($(`[data-card=${c.id}]`, out), S); } catch (e) { console.error(c.id, e); } } });
   draw(); cancelAnimationFrame(render.raf); render.raf = requestAnimationFrame(() => { const w = out.clientWidth; if (w !== render.w) { render.w = w; draw(); } });
@@ -469,13 +498,14 @@ let autoTimer; $('#auto').onchange = () => { clearInterval(autoTimer); if ($('#a
 const root = document.documentElement; { const t = store.get('theme', null); if (t) root.dataset.theme = t; }
 $('#btnTheme').onclick = () => { const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; root.dataset.theme = dark ? 'light' : 'dark'; store.set('theme', root.dataset.theme); render(); };
 addEventListener('hashchange', () => { if (location.hash.slice(1) === 'leaderboard') { showView('lb', true); return; } const k = CFG.parse(decodeURIComponent(location.hash.slice(1))); if (k && $('#viewStats').hidden) showView('stats', true); if (k && (!S || S.key !== k)) { $('#addr').value = k; CFG.load(k); } });
+document.addEventListener('click', e => { const b = e.target.closest('[data-mode]'); if (!b || !S) return; MODE = b.dataset.mode; store.set('mode', MODE); render(); });
 /* ---- Leaderboard tab: ranking of the whole exchange from the public data; every adapter describes its own CFG.lb */
-const LB = { win: CFG.lb.win, sort: CFG.lb.sort, page: 0, rows: null, total: 0, found: null, tok: 0 };
+const LB = { win: CFG.lb.win, sort: CFG.lb.sort, dir: 'desc', page: 0, rows: null, total: 0, found: null, tok: 0 };
 const LBSIZE = 100, shortAddr = a => a.slice(0, 6) + '…' + a.slice(-4);
 { const w = store.get('lb_win', null), o = store.get('lb_sort', null); if (CFG.lb.wins.some(x => x[0] === w)) LB.win = w; if (CFG.lb.sorts.some(x => x[0] === o)) LB.sort = o; }
 function lbUi() {
   $('#lbWin').innerHTML = CFG.lb.wins.map(w => `<button data-w="${w[0]}" type="button" class="${w[0] === LB.win ? 'on' : ''}">${w[1]}</button>`).join('');
-  $('#lbSort').innerHTML = CFG.lb.sorts.map(o => `<button data-s="${o[0]}" type="button" class="${o[0] === LB.sort ? 'on' : ''}">${o[1]}</button>`).join('');
+  $('#lbSort').innerHTML = CFG.lb.sorts.map(o => `<button data-s="${o[0]}" type="button" class="${o[0] === LB.sort ? 'on' : ''}" title="${o[0] === LB.sort ? 'Click again to reverse the order' : ''}">${o[1]}${o[0] === LB.sort ? (LB.dir === 'asc' ? ' ↑' : ' ↓') : ''}</button>`).join('');
 }
 function lbStatus(html, err, busy) { const el = $('#lbStatus'); el.className = 'status' + (err ? ' err' : '') + (busy ? ' busy' : ''); el.innerHTML = (busy ? '<i class="spin"></i>' : '') + html; }
 async function lbLoad(keepFound) {
@@ -484,7 +514,7 @@ async function lbLoad(keepFound) {
     const d = await CFG.lb.load(LB.win, LB.sort, LB.page, LBSIZE, m => { if (tok === LB.tok) lbStatus(m, false, true); });
     if (tok !== LB.tok) return;
     LB.rows = d.rows; LB.total = d.total; LB.note = d.note || ''; LB.at = d.at;
-    lbStatus(`${fmt(LB.total, 0)} wallets · ${CFG.lb.wins.find(w => w[0] === LB.win)[1].toLowerCase()} · ${CFG.lb.sorts.find(o => o[0] === LB.sort)[1].toLowerCase()}${LB.at ? ' · data from ' + new Date(LB.at).toLocaleString('en-US', { hour12: false }) : ''}`);
+    lbStatus(`${fmt(LB.total, 0)} wallets · ${CFG.lb.wins.find(w => w[0] === LB.win)[1].toLowerCase()} · ${CFG.lb.sorts.find(o => o[0] === LB.sort)[1].toLowerCase()}${LB.dir === 'asc' ? ' · lowest first' : ''}${LB.at ? ' · data from ' + new Date(LB.at).toLocaleString('en-US', { hour12: false }) : ''}`);
     lbRender();
   } catch (e) { if (tok === LB.tok) lbStatus('Could not load the leaderboard: ' + esc(e.message), true); }
 }
@@ -493,12 +523,13 @@ function lbRender() {
   const sum = k => rows.reduce((a, r) => a + (r[k] || 0), 0), ex = CFG.lb.extra || [];
   $('#lbKpis').innerHTML = [['Wallets in the ranking', fmt(LB.total, 0)], ['PnL of these ' + rows.length, smoney(sum('pnl'), 0)], ['Volume of these ' + rows.length, '$' + big(sum('vol'))], ['Profitable here', `${rows.filter(r => r.pnl > 0).length} of ${rows.length}`]].map(([k, v]) => `<div>${k}<b class="num">${v}</b></div>`).join('');
   const me = S && S.key, fd = LB.found && LB.found.addr, medal = r => r === 1 ? '🥇' : r === 2 ? '🥈' : r === 3 ? '🥉' : fmt(r, 0);
-  $('#lbTable').innerHTML = `<thead><tr><th>#</th><th style="text-align:left">Address</th><th>Account value</th><th>PnL</th><th>ROI</th><th>Volume</th>${ex.map(c => `<th>${c.t}</th>`).join('')}<th></th></tr></thead><tbody>` +
+  $('#lbTable').innerHTML = `<thead><tr><th>#</th><th style="text-align:left">Address</th><th>Account value</th><th>PnL</th><th>ROI</th><th>Volume</th>${ex.map(c => `<th${c.tip ? ` title="${esc(c.tip)}"` : ''}>${c.t}</th>`).join('')}<th></th></tr></thead><tbody>` +
     rows.map(r => { const k = r.addr.toLowerCase(), mine = k === me || k === fd;
       return `<tr class="lbrow${mine ? ' me' : ''}"><td class="num"><span class="lbmedal">${medal(r.rank)}</span></td><td class="lbaddr" style="text-align:left" title="${esc(r.addr)}">${shortAddr(r.addr)} <button class="btn tiny" data-copy="${esc(r.addr)}" type="button" title="Copy address">copy</button></td><td class="num">${r.av == null ? '—' : '$' + big(r.av)}</td><td class="num ${cls(r.pnl)}">${r.pnl == null ? '—' : smoney(r.pnl, 0)}</td><td class="num ${cls(r.roi)}">${r.roi == null ? '—' : sgn(r.roi, 1) + '%'}</td><td class="num">${r.vol == null ? '—' : '$' + big(r.vol)}</td>${ex.map(c => `<td class="num">${c.f(r)}</td>`).join('')}<td><button class="btn tiny" data-open="${esc(r.addr)}" type="button">open stats</button></td></tr>`; }).join('') + '</tbody>';
   const pages = Math.max(1, Math.ceil(LB.total / LBSIZE));
-  $('#lbPager').innerHTML = `<button class="btn small" data-pg="-1" type="button" ${LB.page <= 0 ? 'disabled' : ''}>‹ Previous</button><span>Page ${fmt(LB.page + 1, 0)} of ${fmt(pages, 0)} · ranks ${fmt(LB.page * LBSIZE + 1, 0)}–${fmt(LB.page * LBSIZE + rows.length, 0)}</span><button class="btn small" data-pg="1" type="button" ${LB.page >= pages - 1 ? 'disabled' : ''}>Next ›</button>`;
+  $('#lbPager').innerHTML = `<button class="btn small" data-pg="-1" type="button" ${LB.page <= 0 ? 'disabled' : ''}>‹ Previous</button><span>Page ${fmt(LB.page + 1, 0)} of ${fmt(pages, 0)} · ranks ${fmt(Math.min(...rows.map(r => r.rank)), 0)}–${fmt(Math.max(...rows.map(r => r.rank)), 0)}</span><button class="btn small" data-pg="1" type="button" ${LB.page >= pages - 1 ? 'disabled' : ''}>Next ›</button>`;
   $('#lbNote').textContent = LB.note;
+  if (LB.goto) { LB.goto = false; const el = $('#lbTable tr.me'); if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
 }
 async function lbPoints() {
   if (!CFG.lb.points) return; const card = $('#lbPointsCard');
@@ -514,12 +545,12 @@ async function lbFind(text) {
     const f = await CFG.lb.find(key, LB.win, LB.sort, m => { const el = $('#lbFindMsg'); if (el) el.textContent = m; });
     if (!f) { box.innerHTML = `<div class="lbfoundbox">No data for <span class="lbaddr">${shortAddr(key)}</span> in this ranking (no trades or too small).</div>`; return; }
     LB.found = { addr: key }; const r = f.row;
-    box.innerHTML = `<div class="lbfoundbox"><span class="lbaddr">${shortAddr(key)}</span><span><b>${f.rank ? 'Rank #' + fmt(f.rank, 0) : 'Rank unknown'}</b>${f.rank > LBSIZE ? ' <span class="muted">· outside this page</span>' : ''}</span><span>Account value ${r.av == null ? '—' : '$' + big(r.av)}</span><span class="${cls(r.pnl)}">PnL ${r.pnl == null ? '—' : smoney(r.pnl, 0)}</span><span>Volume ${r.vol == null ? '—' : '$' + big(r.vol)}</span> <button class="btn tiny" data-open="${esc(key)}" type="button">open stats</button></div>`;
-    if (f.rank && f.rank > LB.page * LBSIZE && f.rank <= (LB.page + 1) * LBSIZE) lbRender();
+    box.innerHTML = `<div class="lbfoundbox"><span class="lbaddr">${shortAddr(key)}</span><span><b>${f.rank ? 'Rank #' + fmt(f.rank, 0) : 'Rank unknown'}</b></span><span>Account value ${r.av == null ? '—' : '$' + big(r.av)}</span><span class="${cls(r.pnl)}">PnL ${r.pnl == null ? '—' : smoney(r.pnl, 0)}</span><span>Volume ${r.vol == null ? '—' : '$' + big(r.vol)}</span> <button class="btn tiny" data-open="${esc(key)}" type="button">open stats</button></div>`;
+    if (f.rank) { const pg = LB.dir === 'asc' ? Math.floor((LB.total - f.rank) / LBSIZE) : Math.floor((f.rank - 1) / LBSIZE); LB.goto = true; if (pg !== LB.page) { LB.page = pg; lbLoad(true); } else lbRender(); }   // jump to the page that holds the address
   } catch (e) { box.innerHTML = `<div class="lbfoundbox neg">${esc(e.message)}</div>`; }
 }
 $('#lbWin').addEventListener('click', e => { const b = e.target.closest('button[data-w]'); if (!b) return; LB.win = b.dataset.w; LB.page = 0; store.set('lb_win', LB.win); lbLoad(); });
-$('#lbSort').addEventListener('click', e => { const b = e.target.closest('button[data-s]'); if (!b) return; LB.sort = b.dataset.s; LB.page = 0; store.set('lb_sort', LB.sort); lbLoad(); });
+$('#lbSort').addEventListener('click', e => { const b = e.target.closest('button[data-s]'); if (!b) return; LB.dir = b.dataset.s === LB.sort && LB.dir !== 'asc' ? 'asc' : 'desc'; LB.sort = b.dataset.s; LB.page = 0; store.set('lb_sort', LB.sort); lbLoad(); });
 $('#lbRefresh').onclick = () => lbLoad();
 $('#lbFind').addEventListener('submit', e => { e.preventDefault(); lbFind($('#lbAddr').value); });
 $('#lbPager').addEventListener('click', e => { const b = e.target.closest('[data-pg]'); if (!b) return; LB.page = Math.max(0, LB.page + (+b.dataset.pg)); lbLoad(true); });
@@ -559,7 +590,7 @@ $('#pgo').onclick = () => { const f = parseGmt($('#pf').value), t = parseGmt($('
 renderPeriodBar();
 /* platform volume of the last 24 hours and open interest, shown in the header and refreshed every minute */
 async function loadPlatform() {
-  try { const p = await CFG.platform(); $('#platV').textContent = '$' + big(p.vol); $('#platOI').textContent = '$' + big(p.oi); $('#plat').title = p.title + '\nUpdated ' + new Date().toLocaleTimeString('en-US', { hour12: false }) + '.'; }
+  try { const p = await CFG.platform(); $('#platV').textContent = '$' + big(p.vol); if (p.spotVol != null) { $('#platSpot').textContent = '$' + big(p.spotVol); $('#platSpotWrap').hidden = false; } $('#platOI').textContent = '$' + big(p.oi); $('#plat').title = p.title + '\nUpdated ' + new Date().toLocaleTimeString('en-US', { hour12: false }) + '.'; }
   catch (e) { console.warn(e); $('#platV').textContent = '—'; $('#platOI').textContent = '—'; }
 }
 loadPlatform(); setInterval(() => { if (!document.hidden) loadPlatform(); }, 60000);
