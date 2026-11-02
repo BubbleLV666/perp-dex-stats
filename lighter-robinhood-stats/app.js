@@ -212,6 +212,7 @@ const CFG = {
     const top = perps.slice().sort((a, b) => oiOf(b) - oiOf(a)).slice(0, 3).map(m => m.symbol + ' $' + big(oiOf(m))).join(', ');
     return { spotVol: spot.reduce((s, m) => s + n(m.daily_quote_token_volume), 0), vol: perps.reduce((s, m) => s + n(m.daily_quote_token_volume), 0), oi: perps.reduce((s, m) => s + oiOf(m), 0), title: `All ${perps.length} perpetual markets on Lighter Robinhood.\nVolume: last 24 hours (rolling window). Spot volume: $${big(spot.reduce((s, m) => s + n(m.daily_quote_token_volume), 0))}.\nOI: open interest in USD. Largest: ${top}.` };
   },
+  liq: () => ltLiq24(),
   lb: {
     wins: [['24h', 'Last 24 hours'], ['7d', 'Last 7 days'], ['30d', 'Last 30 days'], ['all', 'All time']], win: '7d',
     sorts: [['pnl', 'By PnL'], ['volume', 'By volume'], ['roi', 'By ROI'], ['account_value', 'By account value'], ['streak', 'By streak']], sort: 'pnl',
@@ -221,6 +222,16 @@ const CFG = {
     extra: [{ t: 'Open exposure', f: r => r.x && r.x.expo ? '$' + big(r.x.expo) : '—' }, { t: 'Largest position', f: r => r.x && r.x.big ? `${esc(r.x.asset || '')} · $${big(r.x.big)}` : '—' }, { t: 'Long / short', f: r => r.x && r.x.expo ? `${fmt(r.x.long, 0)}% / ${fmt(r.x.short, 0)}%` : '—' }, { t: 'Active-day streak', tip: 'Consecutive days with activity on the account, up to today (best = the longest run ever). Counted by the exchange.', f: r => r.x ? `${r.x.streak} <small>(best ${r.x.best})</small>` : '—' }],
   },
 };
+/* liquidations of the last 24 hours: the exchange lists them in /trades with type=liquidation (newest first, all markets together) */
+async function ltLiq24() {
+  const cut = Date.now() - 864e5; let cursor = null, usd = 0, cnt = 0;
+  for (let g = 0; g < 60; g++) {
+    const d = await get('/trades', { sort_by: 'timestamp', limit: 100, type: 'liquidation', cursor }), rows = d.trades || []; let done = !d.next_cursor || rows.length < 100;
+    for (const t of rows) { if (t.timestamp < cut) { done = true; break; } usd += n(t.usd_amount); cnt++; }
+    if (done) break; cursor = d.next_cursor;
+  }
+  return { usd, cnt };
+}
 /* ---------- leaderboard: pnlLeaderboard of the exchange (any rank by offset, ranked by pnl / volume / roi / account value) */
 const ltRow = (e, i) => ({ rank: e.rank, addr: e.l1_address, av: n(e.account_value), pnl: n(e.pnl), roi: n(e.roi), vol: n(e.volume), x: { expo: n(e.net_position), big: n(e.biggest_position_value), asset: e.biggest_position_asset, long: n(e.long_percentage), short: n(e.short_percentage), streak: n(e.streak), best: n(e.longest_streak) } });
 const ltQuery = (win, sort, extra, dir) => ({ time_window: win, sort_by: sort, sort_dir: dir || 'desc', ...extra });
@@ -604,7 +615,11 @@ async function loadPlatform() {
   try { const p = await CFG.platform(); $('#platV').textContent = '$' + big(p.vol); if (p.spotVol != null) { $('#platSpot').textContent = '$' + big(p.spotVol); $('#platSpotWrap').hidden = false; } $('#platOI').textContent = '$' + big(p.oi); $('#plat').title = p.title + '\nUpdated ' + new Date().toLocaleTimeString('en-US', { hour12: false }) + '.'; }
   catch (e) { console.warn(e); $('#platV').textContent = '—'; $('#platOI').textContent = '—'; }
 }
-loadPlatform(); setInterval(() => { if (!document.hidden) loadPlatform(); }, 60000);
+async function loadLiq() {
+  try { const l = await CFG.liq(); $('#platLiq').textContent = '$' + big(l.usd); $('#platLiq').title = fmt(l.cnt, 0) + ' liquidations in the last 24 hours (perpetual markets)'; }
+  catch (e) { console.warn(e); $('#platLiq').textContent = '—'; }
+}
+loadPlatform(); loadLiq(); setInterval(() => { if (!document.hidden) { loadPlatform(); loadLiq(); } }, 60000);
 
 $('#ver').textContent = 'v1.0';
 renderCardsList(); renderRecent();
